@@ -1,0 +1,104 @@
+version: "3.9"
+
+services:
+  qms-db:
+    image: postgres:16-alpine
+    container_name: qms-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      LANG: ar_SA.UTF-8
+      LC_ALL: ar_SA.UTF-8
+    volumes:
+      - qms_db_data:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - qms-net
+
+  qms-api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: qms-api
+    restart: unless-stopped
+    depends_on:
+      qms-db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      REFRESH_SECRET: ${REFRESH_SECRET}
+      REFRESH_EXPIRES_IN: ${REFRESH_EXPIRES_IN}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_NAME: ${ADMIN_NAME}
+      QM_PASSWORD: ${QM_PASSWORD}
+      APP_NAME: ${APP_NAME}
+      APP_URL: ${APP_URL}
+      PORT: ${PORT}
+    volumes:
+      - qms_uploads:/app/uploads
+    expose:
+      - "3000"
+    networks:
+      - qms-net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  qms-web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: qms-web
+    restart: unless-stopped
+    depends_on:
+      - qms-api
+    expose:
+      - "80"
+    networks:
+      - qms-net
+
+  qms-backup:
+    image: postgres:16-alpine
+    container_name: qms-backup
+    restart: unless-stopped
+    depends_on:
+      qms-db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS}
+    volumes:
+      - ./backups:/backups
+    networks:
+      - qms-net
+    entrypoint: >
+      sh -c "
+      apk add --no-cache dcron tzdata &&
+      echo '0 3 * * * pg_dump -h qms-db -U $$POSTGRES_USER $$POSTGRES_DB | gzip > /backups/qms_$$(date +%Y%m%d_%H%M%S).sql.gz && find /backups -name *.sql.gz -mtime +$$BACKUP_RETENTION_DAYS -delete' > /etc/crontabs/root &&
+      crond -f -l 2
+      "
+
+volumes:
+  qms_db_data:
+  qms_uploads:
+
+networks:
+  qms-net:
+    driver: bridge

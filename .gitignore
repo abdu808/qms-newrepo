@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Environment
+.env
+.env.local
+.env.production
+*.env
+
+# Build outputs
+dist/
+build/
+.next/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Database
+*.sqlite
+*.db
+prisma/dev.db*
+
+# Uploads
+uploads/
+storage/
+
+# Backups
+backups/
+*.sql
+*.dump
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Misc
+coverage/
+.cache/
+tmp/

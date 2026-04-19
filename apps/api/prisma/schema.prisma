@@ -1,0 +1,1441 @@
+// =====================================================
+// QMS - Bir Sabia Charity
+// Prisma Schema - ISO 9001:2015 Compliant
+// =====================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =====================================================
+// AUTH & USERS
+// =====================================================
+
+// =====================================================
+// SHARED WORKFLOW (Maker / Checker / Approver - ISO 7.1.2)
+// =====================================================
+
+enum WorkflowState {
+  DRAFT        // مسودة - أنشأها المُدخِل ولم تُرسَل بعد
+  SUBMITTED    // مرسلة - بانتظار المراجع
+  UNDER_REVIEW // قيد المراجعة - لدى المراجع
+  APPROVED     // معتمدة - أقرّها المعتمد
+  REJECTED     // مرفوضة
+}
+
+enum Role {
+  SUPER_ADMIN      // مسؤول النظام
+  QUALITY_MANAGER  // مدير الجودة
+  COMMITTEE_MEMBER // عضو لجنة الجودة
+  DEPT_MANAGER     // مسؤول قسم
+  EMPLOYEE         // موظف
+  GUEST_AUDITOR    // مدقق ضيف (قراءة فقط)
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         Role      @default(EMPLOYEE)
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  phone        String?
+  jobTitle     String?
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // relations
+  createdObjectives   Objective[]   @relation("ObjCreator")
+  ownedObjectives     Objective[]   @relation("ObjOwner")
+  createdRisks        Risk[]        @relation("RiskCreator")
+  ownedRisks          Risk[]        @relation("RiskOwner")
+  complaints          Complaint[]   @relation("ComplaintAssignee")
+  ncrsReported        NCR[]         @relation("NCRReporter")
+  ncrsAssigned        NCR[]         @relation("NCRAssignee")
+  auditsLead          Audit[]       @relation("AuditLead")
+  supplierEvals       SupplierEval[]
+  donationEvals       DonationEval[]
+  documentsCreated    Document[]    @relation("DocCreator")
+  documentsApproved   Document[]    @relation("DocApprover")
+  acks                Ack[]
+  signatures          Signature[]
+  trainingRecords     TrainingRecord[]
+  auditLogs           AuditLog[]
+  kpiEntries          KpiEntry[]      @relation("KpiEnteredBy")
+  refreshTokens       RefreshToken[]
+  acknowledgments     Acknowledgment[]
+  ackTokens           AckToken[]        @relation("UserAckTokens")
+
+  @@index([email])
+  @@index([departmentId])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+}
+
+// =====================================================
+// ORGANIZATION
+// =====================================================
+
+model Department {
+  id          String  @id @default(cuid())
+  code        String  @unique  // e.g. "QM", "HR", "FIN"
+  name        String              // الاسم بالعربية
+  nameEn      String?
+  parentId    String?
+  parent      Department?  @relation("DeptHierarchy", fields: [parentId], references: [id])
+  children    Department[] @relation("DeptHierarchy")
+  manager     String?             // اسم المسؤول
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]
+  objectives  Objective[]
+  risks       Risk[]
+  ncrs        NCR[]
+  documents   Document[]
+}
+
+// =====================================================
+// CLAUSE 6.2 - QUALITY OBJECTIVES
+// =====================================================
+
+enum ObjectiveStatus {
+  PLANNED
+  IN_PROGRESS
+  ACHIEVED
+  DELAYED
+  CANCELLED
+}
+
+model Objective {
+  id           String   @id @default(cuid())
+  code         String   @unique  // OBJ-2026-001
+  title        String
+  description  String?
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  kpi          String              // مؤشر الأداء
+  baseline     Float?
+  target       Float
+  unit         String?             // %, عدد, ريال
+  currentValue Float?
+  startDate    DateTime
+  dueDate      DateTime
+  status       ObjectiveStatus @default(PLANNED)
+  progress     Int      @default(0)  // 0-100
+  ownerId      String?
+  owner        User?    @relation("ObjOwner", fields: [ownerId], references: [id])
+  createdById  String
+  createdBy    User     @relation("ObjCreator", fields: [createdById], references: [id])
+  strategicGoalId String?
+  strategicGoal   StrategicGoal? @relation(fields: [strategicGoalId], references: [id])
+  // ── KPI tracking classification ──────────────────────
+  kpiType         String  @default("SNAPSHOT")   // CUMULATIVE | PERIODIC | SNAPSHOT | BINARY
+  seasonality     String  @default("UNIFORM")    // UNIFORM | SCHOOL_START | EID_SEASONAL | RAMADAN_RELIEF | QUARTERLY | MONTHLY_EVEN
+  direction       String  @default("HIGHER_BETTER") // HIGHER_BETTER | LOWER_BETTER
+  kpiEntries      KpiEntry[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  @@index([status])
+  @@index([departmentId])
+  @@index([strategicGoalId])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// CLAUSE 6.1 - RISKS & OPPORTUNITIES
+// =====================================================
+
+enum RiskType {
+  RISK
+  OPPORTUNITY
+}
+
+enum RiskStatus {
+  IDENTIFIED
+  UNDER_TREATMENT
+  MITIGATED
+  ACCEPTED
+  CLOSED
+}
+
+model Risk {
+  id             String    @id @default(cuid())
+  code           String    @unique  // RSK-2026-001
+  type           RiskType  @default(RISK)
+  title          String
+  description    String?
+  source         String?             // مصدر الخطر
+  departmentId   String?
+  department     Department? @relation(fields: [departmentId], references: [id])
+  probability    Int                 // 1-5
+  impact         Int                 // 1-5
+  score          Int                 // probability * impact
+  level          String              // منخفض / متوسط / مرتفع / حرج
+  treatment      String?             // خطة المعالجة
+  treatmentType  String?             // تجنب/تخفيف/نقل/قبول
+  ownerId        String?
+  owner          User?     @relation("RiskOwner", fields: [ownerId], references: [id])
+  status         RiskStatus @default(IDENTIFIED)
+  reviewDate     DateTime?
+  createdById    String
+  createdBy      User      @relation("RiskCreator", fields: [createdById], references: [id])
+  strategicGoalId String?
+  strategicGoal   StrategicGoal? @relation(fields: [strategicGoalId], references: [id])
+  // Maker / Checker / Approver workflow (ISO 7.1.2)
+  workflowState   WorkflowState @default(DRAFT)
+  submittedById   String?
+  submittedAt     DateTime?
+  reviewedById    String?
+  reviewedAt      DateTime?
+  approvedById    String?
+  approvedAt      DateTime?
+  rejectionReason String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  @@index([status])
+  @@index([level])
+  @@index([strategicGoalId])
+  @@index([workflowState])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// CLAUSE 9.1.2 - CUSTOMER COMPLAINTS
+// =====================================================
+
+enum ComplaintSource {
+  BENEFICIARY    // مستفيد
+  DONOR          // متبرع
+  VOLUNTEER      // متطوع
+  EMPLOYEE       // موظف
+  PARTNER        // جهة شريكة
+  OTHER
+}
+
+enum ComplaintChannel {
+  PHONE
+  EMAIL
+  WEBSITE
+  IN_PERSON
+  WHATSAPP
+  SOCIAL
+  OTHER
+}
+
+enum ComplaintStatus {
+  NEW
+  UNDER_REVIEW
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+  REJECTED
+}
+
+model Complaint {
+  id            String   @id @default(cuid())
+  code          String   @unique  // CMP-2026-001
+  version       Int      @default(0) // optimistic locking — schema-audit §3
+  source        ComplaintSource
+  channel       ComplaintChannel
+  complainantName  String?
+  complainantPhone String?
+  complainantEmail String?
+  subject       String
+  description   String
+  receivedAt    DateTime @default(now())
+  severity      String   // منخفضة / متوسطة / مرتفعة
+  assigneeId    String?
+  assignee      User?    @relation("ComplaintAssignee", fields: [assigneeId], references: [id])
+  rootCause     String?
+  resolution    String?
+  resolvedAt    DateTime?
+  satisfaction  Int?     // 1-5
+  status        ComplaintStatus @default(NEW)
+  // ربط الشكوى بـ NCR نظامي (P-11 §3.4) — إن كانت الشكوى تكشف خللاً يستدعي إجراءً تصحيحياً
+  relatedNcrId  String?
+  relatedNcr    NCR?     @relation("ComplaintToNcr", fields: [relatedNcrId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+
+  @@index([status])
+  @@index([source])
+  @@index([relatedNcrId])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// CLAUSE 10.2 - NON-CONFORMITY & CORRECTIVE ACTION
+// =====================================================
+
+enum NCRStatus {
+  OPEN
+  ROOT_CAUSE
+  ACTION_PLANNED
+  IN_PROGRESS
+  VERIFICATION
+  CLOSED
+}
+
+model NCR {
+  id              String   @id @default(cuid())
+  code            String   @unique  // NCR-2026-001
+  version         Int      @default(0) // optimistic locking — schema-audit §3
+  title           String
+  description     String
+  departmentId    String?
+  department      Department? @relation(fields: [departmentId], references: [id])
+  detectedAt      DateTime @default(now())
+  reporterId      String
+  reporter        User     @relation("NCRReporter", fields: [reporterId], references: [id])
+  assigneeId      String?
+  assignee        User?    @relation("NCRAssignee", fields: [assigneeId], references: [id])
+  severity        String   // منخفضة / متوسطة / مرتفعة
+  rootCause       String?
+  correction      String?  // التصحيح الفوري
+  correctiveAction String? // الإجراء التصحيحي
+  dueDate         DateTime?
+  verifiedAt      DateTime?
+  verifiedNote    String?
+  effective       Boolean?
+  status          NCRStatus @default(OPEN)
+  // الشكاوى المحوَّلة إلى هذا الـ NCR (P-11 §3.4)
+  complaints      Complaint[] @relation("ComplaintToNcr")
+  // Maker / Checker / Approver workflow (ISO 7.1.2)
+  workflowState   WorkflowState @default(DRAFT)
+  submittedById   String?
+  submittedAt     DateTime?
+  reviewedById    String?
+  reviewedAt      DateTime?
+  approvedById    String?
+  approvedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  @@index([status])
+  @@index([departmentId])
+  @@index([workflowState])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// CLAUSE 9.2 - INTERNAL AUDITS
+// =====================================================
+
+enum AuditType {
+  INTERNAL
+  EXTERNAL
+  SUPPLIER
+  FOLLOWUP
+}
+
+enum AuditStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Audit {
+  id          String   @id @default(cuid())
+  code        String   @unique  // AUD-2026-001
+  title       String
+  type        AuditType @default(INTERNAL)
+  scope       String
+  criteria    String?  // ISO 9001:2015 clauses
+  plannedDate DateTime
+  actualDate  DateTime?
+  leadAuditorId String?
+  leadAuditor User?    @relation("AuditLead", fields: [leadAuditorId], references: [id])
+  team        String?
+  findings    String?  // JSON array
+  strengths   String?
+  weaknesses  String?
+  reportUrl   String?
+  // P-12 §3.2: قالب التدقيق المستخدم (اختياري)
+  checklistTemplateId String?
+  status      AuditStatus @default(PLANNED)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@index([status])
+  @@index([type])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// CLAUSE 8.4 - SUPPLIERS
+// =====================================================
+
+enum SupplierType {
+  GOODS
+  SERVICES
+  CONSTRUCTION     // مقاولات وبناء
+  IT_SERVICES      // خدمات تقنية المعلومات
+  IN_KIND_DONOR    // مورد تبرعات عينية
+  TRANSPORT
+  CONSULTING
+  OTHER
+}
+
+enum SupplierStatus {
+  PENDING
+  APPROVED
+  CONDITIONAL
+  REJECTED
+  SUSPENDED
+  BLACKLISTED
+}
+
+model Supplier {
+  id            String   @id @default(cuid())
+  code          String   @unique  // SUP-001
+  name          String
+  type          SupplierType
+  category      String?  // فئة
+  crNumber      String?  // سجل تجاري
+  vatNumber     String?
+  contactPerson String?
+  phone         String?
+  email         String?
+  address       String?
+  city          String?
+  status        SupplierStatus @default(PENDING)
+  overallRating Float?   // avg of evals
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+
+  evaluations   SupplierEval[]
+  evalTokens    EvalToken[]
+
+  @@index([status])
+  @@index([type])
+  @@index([deletedAt])
+}
+
+model EvalToken {
+  id             String    @id @default(cuid())
+  token          String    @unique @default(uuid())
+  supplierId     String
+  supplier       Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  createdById    String
+  expiresAt      DateTime
+  usedAt         DateTime?
+  evaluatorName  String?
+  evaluatorOrg   String?
+  notes          String?
+  createdAt      DateTime  @default(now())
+
+  @@index([token])
+  @@index([supplierId])
+}
+
+model SupplierEval {
+  id           String   @id @default(cuid())
+  code         String   @unique  // REG-004-2026-VAL-001
+  supplierId   String
+  supplier     Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  // ربط فريد بالتوكن المُستهلك (للتقييمات العامة عبر رابط) — يمنع إنشاء تقييمين من نفس الرابط
+  evalTokenId  String?  @unique
+  evaluatedAt  DateTime @default(now())
+  evaluatorId  String
+  evaluator    User     @relation(fields: [evaluatorId], references: [id])
+  period       String?  // مدة التقييم
+  criteriaJson String   // JSON: { quality: 20, delivery: 15, ... }
+  totalScore   Float
+  maxScore     Float
+  percentage   Float
+  grade        String   // ممتاز/جيد جداً/جيد/مقبول/ضعيف
+  decision     String   // معتمد/مشروط/مرفوض
+  notes        String?
+  // Maker / Checker / Approver workflow (ISO 7.1.2)
+  workflowState   WorkflowState @default(DRAFT)
+  submittedById   String?
+  submittedAt     DateTime?
+  reviewedById    String?
+  reviewedAt      DateTime?
+  approvedById    String?
+  approvedAt      DateTime?
+  rejectionReason String?
+  createdAt    DateTime @default(now())
+  deletedAt    DateTime?
+
+  @@index([supplierId])
+  @@index([workflowState])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// DONATIONS (Charity-specific)
+// =====================================================
+
+enum DonationType {
+  CASH          // نقدي
+  IN_KIND       // عيني
+  SERVICE       // خدمة
+}
+
+enum DonationStatus {
+  RECEIVED
+  VERIFIED
+  DISTRIBUTED
+  REJECTED
+}
+
+model Donation {
+  id          String   @id @default(cuid())
+  code        String   @unique  // DON-2026-0001
+  type        DonationType
+  donorName   String
+  donorPhone  String?
+  donorEmail  String?
+  donorType   String?  // فرد / شركة / جهة
+  itemName    String?  // للعيني
+  quantity    Float?
+  unit        String?
+  amount      Float?   // للنقدي
+  currency    String?  @default("SAR")
+  receivedAt  DateTime @default(now())
+  receivedBy  String?
+  status      DonationStatus @default(RECEIVED)
+  notes       String?
+  evaluations DonationEval[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@index([status])
+  @@index([type])
+  @@index([deletedAt])
+}
+
+model DonationEval {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  donationId    String
+  donation      Donation @relation(fields: [donationId], references: [id], onDelete: Cascade)
+  evaluatorId   String
+  evaluator     User     @relation(fields: [evaluatorId], references: [id])
+  evaluatedAt   DateTime @default(now())
+  conformity    Boolean  // مطابقة المواصفات
+  quality       Int      // 1-5
+  usability     Int      // 1-5
+  expiryCheck   Boolean?
+  score         Float
+  decision      String   // قبول/قبول مشروط/رفض
+  notes         String?
+  createdAt     DateTime @default(now())
+  deletedAt     DateTime?
+
+  @@index([donationId])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// BENEFICIARIES (Charity-specific)
+// =====================================================
+
+enum BeneficiaryCategory {
+  ORPHAN         // يتيم
+  WIDOW          // أرملة
+  POOR_FAMILY    // أسرة فقيرة
+  DISABLED       // ذو إعاقة
+  ELDERLY        // مسن
+  STUDENT        // طالب
+  OTHER
+}
+
+enum BeneficiaryStatus {
+  APPLICANT
+  ACTIVE
+  INACTIVE
+  GRADUATED
+  REJECTED
+}
+
+model Beneficiary {
+  id            String   @id @default(cuid())
+  code          String   @unique  // BEN-2026-0001
+  fullName      String
+  nationalId    String?  // UNIQUE مُدار يدوياً عبر partial index (prisma/migrations-manual/001) — يحترم soft-delete
+  category      BeneficiaryCategory
+  gender        String?
+  birthDate     DateTime?
+  phone         String?
+  city          String?
+  district      String?
+  familySize    Int?
+  monthlyIncome Float?
+  status        BeneficiaryStatus @default(APPLICANT)
+  appliedAt     DateTime @default(now())
+  approvedAt    DateTime?
+  notes         String?
+  // تقييم الاحتياجات (P-08 §3 — ISO 8.2 متطلبات المستفيد)
+  needsAssessment    String?   // وصف الاحتياجات الفعلية (سكن/تعليم/علاج/غذاء...)
+  priorityScore      Int?      // درجة الأولوية 1-5
+  assessedAt         DateTime?
+  assessedBy         String?   // اسم أو معرف المقيّم
+  vulnerabilityFlags String?   // مؤشرات الحماية (CSV): طفل_بلا_معيل، إعاقة_شديدة، مرض_مزمن...
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+
+  @@index([status])
+  @@index([category])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// PROGRAMS (Charity-specific)
+// =====================================================
+
+model Program {
+  id           String   @id @default(cuid())
+  code         String   @unique  // PRG-2026-001
+  name         String
+  description  String?
+  category     String?  // كفالة/كسوة/إفطار/زكاة
+  startDate    DateTime
+  endDate      DateTime?
+  budget       Float?
+  spent        Float?   @default(0)
+  beneficiariesCount Int @default(0)
+  status       String   @default("ACTIVE")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  @@index([deletedAt])
+}
+
+// =====================================================
+// CLAUSE 9.1.2 - SATISFACTION SURVEYS
+// =====================================================
+
+enum SurveyTarget {
+  BENEFICIARY
+  DONOR
+  VOLUNTEER
+  EMPLOYEE
+  PARTNER
+}
+
+model Survey {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  title       String
+  target      SurveyTarget
+  period      String?
+  responses   Int      @default(0)
+  avgScore    Float?
+  questionsJson String  // JSON array
+  resultsJson String?  // JSON
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@index([deletedAt])
+}
+
+// =====================================================
+// CLAUSE 7.5 - DOCUMENT CONTROL
+// =====================================================
+
+enum DocCategory {
+  MANUAL        // دليل الجودة
+  POLICY        // سياسة
+  PROCEDURE     // إجراء
+  WORK_INSTRUCTION // تعليمات عمل
+  FORM          // نموذج
+  RECORD        // سجل
+  EXTERNAL      // مستند خارجي
+}
+
+enum DocStatus {
+  DRAFT
+  UNDER_REVIEW
+  APPROVED
+  PUBLISHED
+  OBSOLETE
+}
+
+model Document {
+  id           String   @id @default(cuid())
+  code         String   @unique  // QMS-MAN-001
+  version      Int      @default(0) // optimistic locking (schema-version, not DocVersion) — schema-audit §3
+  title        String
+  category     DocCategory
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  currentVersion String @default("1.0")
+  status       DocStatus @default(DRAFT)
+  effectiveDate DateTime?
+  reviewDate   DateTime?
+  retentionYears Int?   @default(5)
+  isoClause    String?  // e.g. "7.5"
+  createdById  String
+  createdBy    User     @relation("DocCreator", fields: [createdById], references: [id])
+  approvedById String?
+  approvedBy   User?    @relation("DocApprover", fields: [approvedById], references: [id])
+  approvedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  versions     DocVersion[]
+  acks         Ack[]
+
+  @@index([status])
+  @@index([category])
+  @@index([deletedAt])
+}
+
+model DocVersion {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version    String
+  filePath   String
+  fileSize   Int?
+  mimeType   String?
+  changeLog  String?
+  uploadedAt DateTime @default(now())
+
+  @@index([documentId])
+}
+
+model Ack {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ackedAt    DateTime @default(now())
+  version    String
+
+  @@unique([documentId, userId, version])
+  @@index([userId])
+}
+
+// =====================================================
+// E-SIGNATURES
+// =====================================================
+
+model Signature {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entityType  String   // "NCR", "SupplierEval", ...
+  entityId    String
+  purpose     String   // "approve", "review", "submit"
+  signatureData String // base64 PNG
+  signedAt    DateTime @default(now())
+  ipAddress   String?
+
+  @@index([entityType, entityId])
+  @@index([userId])
+}
+
+// =====================================================
+// CLAUSE 7.2 - TRAINING & COMPETENCE
+// =====================================================
+
+model Training {
+  id                String   @id @default(cuid())
+  code              String   @unique
+  title             String
+  description       String?
+  trainer           String?
+  date              DateTime
+  duration          Float?   // hours
+  location          String?
+  category          String?
+  competenceTarget  String?  // الكفاءة المستهدفة (ISO 7.2) — مثال: مهارات السلامة، الجودة، الخدمة
+  createdAt         DateTime @default(now())
+  deletedAt         DateTime?
+
+  records     TrainingRecord[]
+
+  @@index([deletedAt])
+}
+
+model TrainingRecord {
+  id         String   @id @default(cuid())
+  trainingId String
+  training   Training @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attended   Boolean  @default(false)
+  score      Float?
+  effective  Boolean?
+  certUrl    String?
+  createdAt  DateTime @default(now())
+
+  @@unique([trainingId, userId])
+  @@index([userId])
+}
+
+// =====================================================
+// AUDIT TRAIL (Mandatory ISO requirement)
+// =====================================================
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String   // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, EXPORT, PRINT
+  entityType String?  // model name
+  entityId   String?
+  changesJson String? // { before: {}, after: {} }
+  ipAddress  String?
+  userAgent  String?
+  at         DateTime @default(now())
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([at])
+}
+
+// =====================================================
+// STRATEGIC PLAN (الخطة الاستراتيجية)
+// =====================================================
+
+model StrategicGoal {
+  id           String   @id @default(cuid())
+  code         String   @unique  // STR-2026-001
+  title        String
+  perspective  String?  // المحور: مالي / مستفيدون / داخلي / تعلم ونمو
+  kpi          String?  // مؤشر قياس النجاح
+  baseline     String?  // الوضع الراهن
+  target       String?  // المستهدف
+  initiatives  String?  // المبادرات الاستراتيجية
+  responsible  String?  // الجهة المسؤولة
+  startYear    Int?
+  endYear      Int?
+  progress     Int      @default(0)  // 0-100 (can be auto-calculated)
+  status       String   @default("PLANNED")
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  // Linked children (Phase 2 integration)
+  activities   OperationalActivity[]
+  objectives   Objective[]
+  risks        Risk[]
+
+  @@index([status])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// OPERATIONAL PLAN (الخطة التشغيلية)
+// =====================================================
+
+model OperationalActivity {
+  id           String   @id @default(cuid())
+  code         String   @unique  // ACT-2026-001
+  title        String
+  description  String?
+  perspective  String?  // المحور الاستراتيجي المرتبط
+  department   String?  // الإدارة المنفذة
+  responsible  String?  // المسؤول
+  year         Int?
+  startDate    DateTime?
+  endDate      DateTime?
+  budget       Float?   // الميزانية المرصودة
+  spent        Float?   @default(0)
+  progress     Int      @default(0)  // 0-100
+  status       String   @default("PLANNED")
+  notes        String?
+  strategicGoalId String?
+  strategicGoal   StrategicGoal? @relation(fields: [strategicGoalId], references: [id])
+  // ── KPI tracking classification ──────────────────────
+  kpiType         String    @default("CUMULATIVE") // CUMULATIVE | PERIODIC | SNAPSHOT | BINARY
+  targetValue     Float?                            // القيمة الرقمية للمستهدف
+  targetUnit      String?                           // عدد | % | ريال | ...
+  seasonality     String    @default("UNIFORM")
+  direction       String    @default("HIGHER_BETTER")
+  kpiEntries      KpiEntry[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  @@index([status])
+  @@index([year])
+  @@index([strategicGoalId])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// KPI ENTRIES — المتابعة الشهرية
+// =====================================================
+model KpiEntry {
+  id           String    @id @default(cuid())
+  objectiveId  String?
+  objective    Objective? @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  activityId   String?
+  activity     OperationalActivity? @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  year         Int
+  month        Int       // 1-12
+  actualValue  Float     // القيمة الفعلية
+  spent        Float?    // المصروف الفعلي (للنشاطات)
+  evidenceUrl  String?   // رابط الدليل
+  note         String?
+  enteredById  String
+  enteredBy    User      @relation("KpiEnteredBy", fields: [enteredById], references: [id])
+  enteredAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([objectiveId, year, month])
+  @@unique([activityId, year, month])
+  @@index([year, month])
+  @@index([objectiveId])
+  @@index([activityId])
+}
+
+// =====================================================
+// CLAUSE 4.1 - SWOT ANALYSIS (سياق المنظمة)
+// =====================================================
+
+model SwotItem {
+  id          String   @id @default(cuid())
+  code        String   @unique  // SWOT-001
+  type        String   // STRENGTH / WEAKNESS / OPPORTUNITY / THREAT
+  category    String?  // داخلي / خارجي - سياسي / اقتصادي / اجتماعي / تقني
+  description String
+  impact      String?  // منخفض / متوسط / مرتفع
+  strategy    String?  // الاستراتيجية للاستفادة أو التعامل
+  status      String   @default("ACTIVE")
+  reviewDate  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@index([type])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// CLAUSE 4.2 - INTERESTED PARTIES (الأطراف ذات العلاقة)
+// =====================================================
+
+model InterestedParty {
+  id            String   @id @default(cuid())
+  code          String   @unique  // IP-001
+  name          String
+  type          String   // DONOR / BENEFICIARY / GOVERNMENT / EMPLOYEE / PARTNER / SUPPLIER / COMMUNITY / VOLUNTEER
+  needs         String?  // الاحتياجات
+  expectations  String?  // التوقعات
+  influence     String?  // منخفض / متوسط / مرتفع
+  monitoring    String?  // طريقة الرصد والاستجابة
+  responsible   String?  // المسؤول
+  status        String   @default("ACTIVE")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+
+  @@index([type])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// CLAUSE 4.4 - PROCESS MAP (خريطة العمليات)
+// =====================================================
+
+model Process {
+  id            String   @id @default(cuid())
+  code          String   @unique  // PRO-001
+  name          String
+  type          String   // CORE / SUPPORT / MANAGEMENT
+  owner         String?  // مالك العملية
+  inputs        String?  // المدخلات
+  outputs       String?  // المخرجات
+  resources     String?  // الموارد
+  kpis          String?  // مؤشرات الأداء
+  risks         String?  // المخاطر المرتبطة
+  description   String?
+  status        String   @default("ACTIVE")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+
+  @@index([type])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// CLAUSE 5.2 - QUALITY POLICY (سياسة الجودة)
+// =====================================================
+
+model QualityPolicy {
+  id            String   @id @default(cuid())
+  version       String   @unique  // 1.0
+  title         String
+  content       String   // النص الكامل
+  commitments   String?  // التعهدات
+  approvedBy    String?  // اسم المعتمد
+  approvedAt    DateTime?
+  effectiveDate DateTime?
+  reviewDate    DateTime?
+  active        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+
+  @@index([active])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// CLAUSE 9.3 - MANAGEMENT REVIEW (مراجعة الإدارة)
+// =====================================================
+
+model ManagementReview {
+  id              String   @id @default(cuid())
+  code            String   @unique  // MR-2026-001
+  title           String
+  meetingDate     DateTime
+  period          String?  // الربع الأول 2026
+  attendees       String?  // الحضور
+  status          String   @default("PLANNED")
+
+  // INPUTS - Clause 9.3.2
+  contextChanges     String?  // تغييرات في السياق
+  objectivesReview   String?  // مراجعة تحقق الأهداف
+  processPerformance String?  // أداء العمليات
+  conformityStatus   String?  // حالة المطابقة
+  auditResults       String?  // نتائج التدقيق
+  customerFeedback   String?  // تغذية راجعة من المستفيدين
+  risksStatus        String?  // حالة المخاطر
+  improvementOpps    String?  // فرص التحسين
+
+  // OUTPUTS - Clause 9.3.3
+  decisions          String?  // القرارات
+  resourceNeeds      String?  // الاحتياجات من الموارد
+  improvementActions String?  // إجراءات التحسين
+  systemChanges      String?  // تغييرات على النظام
+
+  // ISO 9.3.1: حضور الإدارة العليا (شرط أساسي لصحة المراجعة)
+  topManagementPresent Boolean? // هل حضرت الإدارة العليا؟
+
+  minutes            String?  // محضر الاجتماع
+  nextReview         DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  deletedAt          DateTime?
+
+  @@index([status])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// CLAUSE 7.2 - COMPETENCE MATRIX (مصفوفة الكفاءات)
+// =====================================================
+
+model CompetenceRequirement {
+  id               String   @id @default(cuid())
+  code             String   @unique  // COMP-001
+  jobTitle         String   // المسمى الوظيفي
+  department       String?
+  requiredSkills   String?  // المهارات المطلوبة
+  minEducation     String?  // الحد الأدنى للتعليم
+  minExperience    Int?     // سنوات الخبرة
+  certifications   String?  // الشهادات المطلوبة
+  trainings        String?  // التدريبات المطلوبة
+  evaluationMethod String?  // طريقة التقييم
+  status           String   @default("ACTIVE")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  deletedAt        DateTime?
+
+  @@index([status])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// CLAUSE 7.4 - COMMUNICATION PLAN (خطة الاتصال)
+// =====================================================
+
+model CommunicationPlan {
+  id           String   @id @default(cuid())
+  code         String   @unique  // COMM-001
+  topic        String   // الموضوع
+  audience     String   // الجمهور المستهدف
+  purpose      String?  // الغرض
+  channel      String   // القناة: بريد / اجتماع / لوحة / واتساب / موقع
+  frequency    String   // يومي / أسبوعي / شهري / ربعي / سنوي / عند الحاجة
+  responsible  String   // المسؤول
+  format       String?  // الشكل
+  status       String   @default("ACTIVE")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  @@index([status])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// CLAUSE 7.4 - NOTIFICATIONS (قناة التواصل الداخلي)
+// =====================================================
+// P-06 §4 — إشعارات آلية للمدراء عند انحرافات KPIs / NCR متأخر / وثائق تستحق المراجعة.
+
+model Notification {
+  id         String   @id @default(cuid())
+  userId     String   // المستلم
+  type       String   // NCR_OVERDUE | COMPLAINT_OVERDUE | DOC_REVIEW_DUE | RISK_REVIEW_DUE | POLICY_ACK_PENDING | CUSTOM
+  title      String
+  message    String
+  link       String?  // رابط داخلي للانتقال للسجل ذي العلاقة
+  entityType String?
+  entityId   String?
+  // مفتاح فريد لمنع تكرار الإشعار لنفس الحدث (مثل: "NCR_OVERDUE:ncr-123:2026-04-18")
+  eventKey   String   @unique
+  readAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, readAt])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// =====================================================
+// CLAUSE 10.3 - CONTINUAL IMPROVEMENT (PDCA projects)
+// =====================================================
+// P-15 — مشاريع التحسين المستمر بدورة Deming (Plan-Do-Check-Act)
+
+enum PdcaPhase {
+  PLAN
+  DO
+  CHECK
+  ACT
+  CLOSED
+}
+
+enum ImprovementStatus {
+  PROPOSED   // مقترح — قيد الدراسة
+  APPROVED   // معتمد — جاهز للبدء
+  ACTIVE     // نشط
+  SUSPENDED  // مُعلَّق
+  COMPLETED  // مكتمل بنجاح
+  FAILED     // فشل — مع توثيق الدروس
+}
+
+model ImprovementProject {
+  id             String   @id @default(cuid())
+  code           String   @unique  // IMP-2026-001
+  title          String
+  description    String?
+  proposedById   String   // مقترح الفكرة
+  ownerId        String?  // مالك المشروع
+  departmentId   String?
+
+  // ── ربط بمصادر أخرى ────────────────────────
+  sourceType     String?  // NCR / COMPLAINT / AUDIT / REVIEW / EMPLOYEE / OTHER
+  sourceRef      String?  // code المرجع (مثل NCR-2026-045)
+
+  // ── PDCA ─────────────────────────────────
+  phase          PdcaPhase @default(PLAN)
+  planDetails    String?  // Plan: الهدف، النطاق، الموارد، مؤشر النجاح
+  planTarget     String?  // المستهدف القابل للقياس
+  doDetails      String?  // Do: ما نُفِّذ فعلياً (تجربة على نطاق محدود)
+  doStartedAt    DateTime?
+  checkResults   String?  // Check: القياس والنتيجة مقابل الهدف
+  checkMeasuredAt DateTime?
+  actDecision    String?  // Act: التعميم / إعادة التخطيط / الإيقاف
+  lessonsLearned String?  // دروس مستفادة (ISO 10.3)
+
+  status         ImprovementStatus @default(PROPOSED)
+  startDate      DateTime?
+  endDate        DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  @@index([status])
+  @@index([phase])
+  @@index([ownerId])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// CLAUSE 9.2 - AUDIT CHECKLIST TEMPLATES (قوالب تدقيق)
+// =====================================================
+// P-12 §3.2 — قوالب قابلة لإعادة الاستخدام تُطبَّق على التدقيقات الداخلية.
+
+model AuditChecklistTemplate {
+  id           String   @id @default(cuid())
+  code         String   @unique  // CHK-001
+  title        String
+  description  String?
+  isoClauses   String?  // CSV: "4.1, 4.2, 5.2"
+  // قائمة الأسئلة — JSON array: [{q, clause, evidenceType, critical}]
+  itemsJson    String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  @@index([active])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// CLAUSE 7.2 - PERFORMANCE REVIEWS (تقييم الأداء السنوي)
+// =====================================================
+// P-05 §5 — تقييم أداء الموظف سنوياً لقياس الكفاءة والالتزام (ISO 7.2)
+
+enum PerfReviewStatus {
+  DRAFT          // مسودة — قيد الإعداد
+  EMPLOYEE_REVIEW // بانتظار مراجعة الموظف وتوقيعه
+  FINALIZED      // نهائي — موثَّق
+}
+
+model PerformanceReview {
+  id             String   @id @default(cuid())
+  code           String   @unique  // PRV-2026-001
+  employeeId     String   // الموظف المُقيَّم
+  reviewerId     String   // المُقيِّم (غالباً مدير القسم)
+  period         String   // "2026" أو "Q1-2026"
+  periodStart    DateTime
+  periodEnd      DateTime
+
+  // تقييمات رقمية 1-5
+  jobKnowledge   Int?     // المعرفة بالعمل
+  qualityOfWork  Int?     // جودة العمل
+  productivity   Int?     // الإنتاجية
+  teamwork       Int?     // العمل الجماعي
+  communication  Int?     // التواصل
+  initiative     Int?     // المبادرة
+  reliability    Int?     // الالتزام والموثوقية
+
+  overallRating  Float?   // المعدل (يُحسب أو يُدخَل يدوياً)
+  grade          String?  // ممتاز / جيد جداً / جيد / مقبول / ضعيف
+
+  strengths        String?  // نقاط القوة
+  areasToImprove   String?  // مجالات التحسين
+  goalsNextPeriod  String?  // أهداف الفترة القادمة
+  developmentPlan  String?  // خطة التطوير والتدريب المطلوب
+  employeeComments String?  // تعليق الموظف (بعد قراءته للتقييم)
+
+  status         PerfReviewStatus @default(DRAFT)
+  employeeSignedAt DateTime?
+  finalizedAt    DateTime?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  @@index([employeeId])
+  @@index([reviewerId])
+  @@index([period])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+// =====================================================
+// CLAUSE 5.2 - POLICY ACKNOWLEDGMENTS (إقرار اطّلاع على السياسة)
+// =====================================================
+// P-02 §3.4 — كل موظف يقرّ مكتوباً أنه اطّلع على سياسة الجودة السارية.
+model PolicyAcknowledgment {
+  id             String        @id @default(cuid())
+  userId         String
+  policyId       String
+  policyVersion  String        // نسخة السياسة عند الإقرار (snapshot)
+  acknowledgedAt DateTime      @default(now())
+  ipAddress      String?
+  userAgent      String?
+
+  @@unique([userId, policyId, policyVersion])
+  @@index([userId])
+  @@index([policyId])
+}
+
+// =====================================================
+// ACKNOWLEDGMENT FRAMEWORK (إطار الإقرارات الموحَّد)
+// =====================================================
+// يُعمِّم PolicyAcknowledgment ليشمل:
+//   - الموظفين (سياسات الجودة، الميثاق الأخلاقي، تضارب مصالح، السرية، ...)
+//   - المتطوعين (اتفاقيات التطوع، السلامة)
+//   - أعضاء مجلس الإدارة (الميثاق، الأطراف ذات العلاقة)
+//   - المستفيدين (موافقة البيانات، حقوق المستفيد) — عبر subject خارجي
+//   - الموردين والمتبرعين (ميثاق السلوك، خصوصية المتبرع)
+// المرجع: حوكمة · ISO 37001 · PDPL · CHS · نظام الجمعيات
+
+enum AckCategory {
+  QUALITY_POLICY
+  CODE_OF_ETHICS
+  CONFLICT_OF_INTEREST
+  CONFIDENTIALITY
+  DATA_PROTECTION
+  SAFEGUARDING
+  ANTI_HARASSMENT
+  ANTI_CORRUPTION
+  WHISTLEBLOWER
+  WORK_REGULATIONS
+  HEALTH_SAFETY
+  IT_USAGE
+  SOCIAL_MEDIA
+  BOARD_CHARTER
+  BYLAWS
+  BENEFICIARY_RIGHTS
+  BENEFICIARY_CONSENT
+  SUPPLIER_CODE
+  DONOR_PRIVACY
+  VOLUNTEER_AGREEMENT
+  OTHER
+}
+
+enum AckAudience {
+  EMPLOYEE
+  VOLUNTEER
+  BOARD_MEMBER
+  GENERAL_ASSEMBLY
+  BENEFICIARY
+  SUPPLIER
+  DONOR
+  AUDITOR
+  ALL
+}
+
+enum AckMethod {
+  DIGITAL   // إقرار إلكتروني داخل النظام
+  PAPER     // إقرار ورقي مع مسح ضوئي
+  VERBAL    // شفهي موثَّق (استثناء، يحتاج تبرير)
+}
+
+enum AckRenewFreq {
+  ONCE      // مرة واحدة (عند التعيين)
+  ANNUAL    // سنوي
+  ON_CHANGE // فقط عند تغيّر نسخة الوثيقة
+}
+
+model AckDocument {
+  id             String         @id @default(cuid())
+  code           String         @unique                    // POL-NDA-01
+  title          String
+  category       AckCategory
+  audience       AckAudience[]                             // يمكن أن تستهدف أكثر من فئة
+  version        String         @default("1.0")
+  content        String                                    // النص الكامل (markdown)
+  commitments    String?
+  mandatory      Boolean        @default(true)
+  renewFrequency AckRenewFreq   @default(ON_CHANGE)
+  effectiveDate  DateTime?
+  reviewDate     DateTime?
+  active         Boolean        @default(false)
+  approvedBy     String?
+  approvedAt     DateTime?
+  createdById    String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  deletedAt      DateTime?
+
+  acknowledgments Acknowledgment[]
+  tokens          AckToken[]
+
+  @@index([active, category])
+  @@index([deletedAt])
+}
+
+// AckToken — رابط إقرار شخصي (يُرسل عبر واتساب/SMS/بريد) ومرتبط بشخص محدَّد
+model AckToken {
+  id              String       @id @default(cuid())
+  token           String       @unique @default(uuid())
+  documentId      String
+  document        AckDocument  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentVersion String
+  // Target (polymorphic) — إما مستخدم داخلي أو طرف خارجي
+  userId          String?
+  user            User?        @relation(fields: [userId], references: [id], name: "UserAckTokens")
+  externalType    String?      // BOARD_MEMBER | BENEFICIARY | SUPPLIER | DONOR | VOLUNTEER | AUDITOR | EXTERNAL
+  externalName    String?
+  externalContact String?      // phone أو email
+  sentVia         String?      // WHATSAPP | SMS | EMAIL | MANUAL
+  sentAt          DateTime?
+  createdById     String?
+  expiresAt       DateTime?
+  usedAt          DateTime?
+  ipAddress       String?
+  userAgent       String?
+  notes           String?
+  createdAt       DateTime     @default(now())
+
+  @@index([token])
+  @@index([documentId])
+  @@index([userId])
+  @@index([externalType, externalContact])
+}
+
+model Acknowledgment {
+  id              String       @id @default(cuid())
+  documentId      String
+  document        AckDocument  @relation(fields: [documentId], references: [id])
+  documentVersion String                                   // snapshot للنسخة وقت الإقرار
+  // Subject polymorphic — إما مستخدم داخلي أو طرف خارجي
+  userId          String?                                  // الموظف/المتطوع/عضو المجلس (مستخدم في النظام)
+  user            User?        @relation(fields: [userId], references: [id])
+  externalType    String?                                  // BENEFICIARY | SUPPLIER | DONOR | EXTERNAL
+  externalId      String?                                  // id في الجدول الخارجي إن وُجد
+  externalName    String?                                  // snapshot للاسم
+  externalContact String?                                  // email/phone
+  acknowledgedAt  DateTime     @default(now())
+  ipAddress       String?
+  userAgent       String?
+  method          AckMethod    @default(DIGITAL)
+  evidenceUrl     String?                                  // مسح ضوئي للإقرار الورقي
+  notes           String?
+
+  @@unique([documentId, documentVersion, userId], name: "ack_internal_unique")
+  // منع تكرار الإقرارات الخارجية لنفس الوثيقة/الإصدار/الجهة
+  @@unique([documentId, documentVersion, externalType, externalContact], name: "ack_external_unique_by_contact", map: "ack_ext_by_contact")
+  @@unique([documentId, documentVersion, externalType, externalId], name: "ack_external_unique_by_id", map: "ack_ext_by_id")
+  @@index([documentId])
+  @@index([userId])
+  @@index([externalType, externalId])
+  @@index([acknowledgedAt])
+}
+
+// =====================================================
+// SYSTEM SETTINGS
+// =====================================================
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

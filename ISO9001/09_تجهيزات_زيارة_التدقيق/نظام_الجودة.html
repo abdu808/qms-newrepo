@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>نظام إدارة الجودة - الجمعية الخيرية</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { font-family: 'Cairo', sans-serif !important; }
+  body { background: #f1f5f9; }
+  .sidebar-link { transition: all 0.2s; }
+  .sidebar-link:hover { background: rgba(255,255,255,0.1); }
+  .sidebar-link.active { background: rgba(255,255,255,0.2); border-right: 4px solid #fbbf24; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: 10px 12px; text-align: right; border-bottom: 1px solid #e2e8f0; font-size: 14px; }
+  th { background: #1e3a8a; color: white; font-weight: 600; position: sticky; top: 0; }
+  tr:hover { background: #f8fafc; }
+  .badge { display:inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .badge-red { background: #fee2e2; color: #991b1b; }
+  .badge-amber { background: #fef3c7; color: #92400e; }
+  .badge-green { background: #dcfce7; color: #166534; }
+  .badge-blue { background: #dbeafe; color: #1e40af; }
+  .badge-gray { background: #f1f5f9; color: #475569; }
+  .modal-bg { background: rgba(0,0,0,0.5); }
+  input, select, textarea { font-family: 'Cairo', sans-serif !important; }
+  @media print {
+    .no-print { display: none !important; }
+    body { background: white; }
+    main { margin: 0 !important; padding: 0 !important; }
+  }
+</style>
+</head>
+<body class="text-slate-800">
+
+<div class="flex min-h-screen">
+
+  <!-- Sidebar -->
+  <aside class="no-print w-64 bg-gradient-to-b from-blue-900 to-blue-800 text-white flex flex-col fixed h-screen overflow-y-auto">
+    <div class="p-5 border-b border-blue-700">
+      <h1 class="text-lg font-bold flex items-center gap-2">
+        <span class="text-2xl">🏛️</span>
+        <span>نظام إدارة الجودة</span>
+      </h1>
+      <p class="text-xs text-blue-200 mt-1">الجمعية الخيرية - ISO 9001</p>
+    </div>
+    <nav class="flex-1 py-3">
+      <a class="sidebar-link active flex items-center gap-3 px-5 py-3 cursor-pointer" data-view="dashboard">📊 لوحة التحكم</a>
+      <a class="sidebar-link flex items-center gap-3 px-5 py-3 cursor-pointer" data-view="objectives">🎯 أهداف الجودة</a>
+      <a class="sidebar-link flex items-center gap-3 px-5 py-3 cursor-pointer" data-view="risks">⚠️ المخاطر والفرص</a>
+      <a class="sidebar-link flex items-center gap-3 px-5 py-3 cursor-pointer" data-view="complaints">📞 الشكاوى والإجراءات</a>
+      <a class="sidebar-link flex items-center gap-3 px-5 py-3 cursor-pointer" data-view="ncr">❌ عدم المطابقة (NCR)</a>
+      <a class="sidebar-link flex items-center gap-3 px-5 py-3 cursor-pointer" data-view="audits">🔍 التدقيق الداخلي</a>
+      <a class="sidebar-link flex items-center gap-3 px-5 py-3 cursor-pointer" data-view="suppliers">🚚 تقييم الموردين</a>
+      <a class="sidebar-link flex items-center gap-3 px-5 py-3 cursor-pointer" data-view="beneficiaries">🤝 المستفيدون والاستبيانات</a>
+      <a class="sidebar-link flex items-center gap-3 px-5 py-3 cursor-pointer" data-view="training">🎓 التدريب والكفاءات</a>
+      <a class="sidebar-link flex items-center gap-3 px-5 py-3 cursor-pointer" data-view="documents">📚 ضبط الوثائق</a>
+      <a class="sidebar-link flex items-center gap-3 px-5 py-3 cursor-pointer" data-view="ack">✅ اطلاع الموظفين</a>
+      <a class="sidebar-link flex items-center gap-3 px-5 py-3 cursor-pointer" data-view="settings">⚙️ النسخ الاحتياطي</a>
+    </nav>
+    <div class="p-4 border-t border-blue-700 text-xs text-blue-200">
+      <div>إصدار 1.0 • 2026</div>
+      <div class="mt-1">© الجمعية الخيرية</div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="flex-1 mr-64 p-6">
+    <!-- Top Bar -->
+    <div class="no-print flex items-center justify-between mb-6 bg-white rounded-xl shadow-sm p-4">
+      <div>
+        <h2 id="pageTitle" class="text-xl font-bold text-slate-800">لوحة التحكم</h2>
+        <p id="pageSubtitle" class="text-sm text-slate-500">نظرة شاملة على أداء نظام الجودة</p>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="window.print()" class="px-3 py-2 text-sm bg-slate-100 hover:bg-slate-200 rounded-lg">🖨️ طباعة</button>
+        <button onclick="exportAll()" class="px-3 py-2 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg">⬇️ تصدير</button>
+        <label class="px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer">⬆️ استيراد
+          <input type="file" accept=".json" class="hidden" onchange="importAll(event)" />
+        </label>
+      </div>
+    </div>
+
+    <div id="viewContainer"></div>
+  </main>
+</div>
+
+<!-- Modal -->
+<div id="modal" class="hidden fixed inset-0 modal-bg z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div class="flex items-center justify-between p-4 border-b">
+      <h3 id="modalTitle" class="font-bold text-lg"></h3>
+      <button onclick="closeModal()" class="text-slate-400 hover:text-slate-700 text-2xl">×</button>
+    </div>
+    <div id="modalBody" class="p-5"></div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   نظام إدارة الجودة - الجمعية الخيرية
+   ========================================================= */
+
+const STORAGE_KEY = 'qms_charity_v1';
+
+/* ---------- Sample Data ---------- */
+const SAMPLE_DATA = {
+  objectives: [
+    {id:1, code:'OBJ-01', title:'رفع رضا المستفيدين إلى 90%', target:90, actual:87, unit:'%', owner:'مدير البرامج', deadline:'2026-12-31', status:'قيد التنفيذ'},
+    {id:2, code:'OBJ-02', title:'تخفيض زمن الاستجابة للشكاوى إلى 3 أيام', target:3, actual:4, unit:'يوم', owner:'مسؤول الجودة', deadline:'2026-06-30', status:'متعثر'},
+    {id:3, code:'OBJ-03', title:'تدريب 100% من الموظفين على ISO 9001', target:100, actual:100, unit:'%', owner:'الموارد البشرية', deadline:'2026-03-31', status:'محقق'},
+    {id:4, code:'OBJ-04', title:'إغلاق 95% من حالات عدم المطابقة خلال 30 يوم', target:95, actual:82, unit:'%', owner:'مسؤول الجودة', deadline:'2026-12-31', status:'قيد التنفيذ'},
+    {id:5, code:'OBJ-05', title:'زيادة عدد المتبرعين الجدد بنسبة 20%', target:20, actual:23, unit:'%', owner:'مدير التطوير', deadline:'2026-12-31', status:'محقق'},
+  ],
+  risks: [
+    {id:1, code:'R-01', source:'تشغيلي', desc:'نقص متطوعين في موسم رمضان', impact:4, likelihood:4, mitigation:'حملة تجنيد مبكرة قبل شهرين', owner:'مدير المتطوعين', deadline:'2026-02-15', status:'قيد المعالجة', type:'خطر'},
+    {id:2, code:'R-02', source:'مالي', desc:'تأخر صرف منحة جهة مانحة رئيسية', impact:5, likelihood:3, mitigation:'تنويع مصادر التمويل + احتياطي 3 أشهر', owner:'المدير المالي', deadline:'2026-06-30', status:'مفتوح', type:'خطر'},
+    {id:3, code:'R-03', source:'تنظيمي', desc:'تغيّر لوائح المنصة الوطنية للعمل التطوعي', impact:3, likelihood:3, mitigation:'متابعة دورية للوائح وتحديث الإجراءات', owner:'الشؤون القانونية', deadline:'2026-12-31', status:'مفتوح', type:'خطر'},
+    {id:4, code:'O-01', source:'استراتيجي', desc:'إمكانية شراكة مع شركة كبرى للمسؤولية المجتمعية', impact:5, likelihood:3, mitigation:'تجهيز عرض شراكة وعرضه', owner:'المدير التنفيذي', deadline:'2026-04-30', status:'مفتوح', type:'فرصة'},
+    {id:5, code:'R-04', source:'تقني', desc:'فقدان بيانات المستفيدين بسبب عطل', impact:5, likelihood:2, mitigation:'نسخ احتياطي أسبوعي + تشفير', owner:'تقنية المعلومات', deadline:'2026-03-31', status:'مغلق', type:'خطر'},
+  ],
+  complaints: [
+    {id:1, code:'COM-2026-001', date:'2026-01-15', source:'مستفيد', subject:'تأخر استلام السلة الغذائية', severity:'متوسطة', action:'مراجعة جدول التوزيع وزيادة فرق التوصيل', responsible:'مدير العمليات', dueDate:'2026-01-25', status:'مغلقة', closeDate:'2026-01-22', rootCause:'نقص مركبات في فرع جدة'},
+    {id:2, code:'COM-2026-002', date:'2026-02-03', source:'متبرع', subject:'عدم استلام إيصال التبرع', severity:'منخفضة', action:'إرسال الإيصال + مراجعة نظام الإيصالات الآلي', responsible:'المالية', dueDate:'2026-02-10', status:'مغلقة', closeDate:'2026-02-05', rootCause:'خطأ في إعدادات البريد'},
+    {id:3, code:'COM-2026-003', date:'2026-02-20', source:'متطوع', subject:'عدم وضوح المهام في المخيم الكشفي', severity:'متوسطة', action:'إعداد دليل المتطوع وتدريب القادة', responsible:'مدير المتطوعين', dueDate:'2026-03-15', status:'قيد التنفيذ', closeDate:'', rootCause:'قيد التحقيق'},
+    {id:4, code:'COM-2026-004', date:'2026-03-08', source:'مستفيد', subject:'سوء تعامل من أحد المنسقين', severity:'عالية', action:'تحقيق داخلي + تدريب على مهارات التواصل', responsible:'مدير الموارد البشرية', dueDate:'2026-03-25', status:'قيد التنفيذ', closeDate:'', rootCause:'قيد التحقيق'},
+  ],
+  ncr: [
+    {id:1, code:'NCR-001', date:'2026-01-20', area:'المستودع', desc:'عدم تطابق كميات المواد الغذائية مع كشف الجرد', severity:'كبيرة', correctiveAction:'جرد فوري + تحديث نظام المخزون شهرياً', responsible:'أمين المستودع', dueDate:'2026-02-20', status:'مغلق'},
+    {id:2, code:'NCR-002', date:'2026-02-12', area:'برنامج كفالة الأيتام', desc:'عدم توثيق زيارات المتابعة لـ 12 يتيم', severity:'متوسطة', correctiveAction:'إعداد نموذج زيارة + جدول متابعة شهري', responsible:'منسق الكفالات', dueDate:'2026-03-12', status:'قيد التنفيذ'},
+    {id:3, code:'NCR-003', date:'2026-03-05', area:'الموارد البشرية', desc:'عقود متطوعين بدون توقيع', severity:'صغيرة', correctiveAction:'مراجعة جميع العقود + اعتماد قائمة فحص', responsible:'الموارد البشرية', dueDate:'2026-03-30', status:'مفتوح'},
+  ],
+  audits: [
+    {id:1, code:'AUD-2026-Q1', plannedDate:'2026-03-15', actualDate:'2026-03-18', area:'إدارة البرامج الخيرية', auditor:'م. سعد العمري', findings:3, majorNC:0, minorNC:2, observations:1, status:'مكتمل', report:'تقرير_AUD-Q1.pdf'},
+    {id:2, code:'AUD-2026-Q2', plannedDate:'2026-06-15', actualDate:'', area:'الموارد المالية والمحاسبة', auditor:'م. نورة الحربي', findings:0, majorNC:0, minorNC:0, observations:0, status:'مخطط', report:''},
+    {id:3, code:'AUD-2026-Q3', plannedDate:'2026-09-15', actualDate:'', area:'إدارة المتطوعين', auditor:'لم يحدد', findings:0, majorNC:0, minorNC:0, observations:0, status:'مخطط', report:''},
+    {id:4, code:'AUD-2026-Q4', plannedDate:'2026-12-15', actualDate:'', area:'تقنية المعلومات وأمن البيانات', auditor:'لم يحدد', findings:0, majorNC:0, minorNC:0, observations:0, status:'مخطط', report:''},
+  ],
+  suppliers: [
+    {id:1, code:'SUP-001', name:'شركة الأمل للمواد الغذائية', category:'مواد غذائية', evalDate:'2026-01-30', quality:9, delivery:8, price:7, service:9, score:33, rating:'A', status:'معتمد', notes:'ممتاز - الالتزام بالمواعيد عالي'},
+    {id:2, code:'SUP-002', name:'مؤسسة النور للطباعة', category:'مطبوعات', evalDate:'2026-02-10', quality:7, delivery:6, price:8, service:7, score:28, rating:'B', status:'معتمد', notes:'مقبول مع ملاحظة على تأخر التسليم'},
+    {id:3, code:'SUP-003', name:'مكتب التميز للنقل', category:'نقل ولوجستيات', evalDate:'2026-02-20', quality:8, delivery:9, price:6, service:8, score:31, rating:'A', status:'معتمد', notes:''},
+    {id:4, code:'SUP-004', name:'شركة الفجر للكسوة', category:'ملابس وكسوة', evalDate:'2026-03-05', quality:5, delivery:4, price:9, service:5, score:23, rating:'C', status:'تحت الملاحظة', notes:'يحتاج تحسين الجودة - تنبيه رسمي'},
+  ],
+  beneficiaries: [
+    {id:1, code:'BEN-001', surveyDate:'2026-01-25', program:'كفالة الأيتام', count:120, satisfaction:92, suggestions:'زيادة الزيارات الميدانية', followUp:'تم رفعها لإدارة البرامج'},
+    {id:2, code:'BEN-002', surveyDate:'2026-02-15', program:'إفطار صائم', count:850, satisfaction:88, suggestions:'تنويع الوجبات', followUp:'سيُؤخذ بها رمضان القادم'},
+    {id:3, code:'BEN-003', surveyDate:'2026-03-10', program:'الكسوة الشتوية', count:340, satisfaction:85, suggestions:'تقديم المقاسات بشكل أدق', followUp:'تحديث نموذج التسجيل'},
+    {id:4, code:'BEN-004', surveyDate:'2026-03-28', program:'سداد الديون', count:65, satisfaction:95, suggestions:'سرية أعلى في المراسلات', followUp:'تطبيق فوري'},
+  ],
+  training: [
+    {id:1, code:'TR-001', employee:'عبدالله المطيري', role:'مسؤول جودة', course:'مدقق داخلي ISO 9001:2015', date:'2026-01-12', hours:24, provider:'هيئة المواصفات', certified:true, expiry:'2029-01-12'},
+    {id:2, code:'TR-002', employee:'سارة العتيبي', role:'منسقة برامج', course:'إدارة المشاريع للجمعيات الخيرية', date:'2026-02-08', hours:16, provider:'مركز التدريب الأهلي', certified:true, expiry:''},
+    {id:3, code:'TR-003', employee:'فهد الزهراني', role:'مدير المتطوعين', course:'إدارة فرق العمل التطوعي', date:'2026-02-20', hours:12, provider:'منصة العمل التطوعي', certified:true, expiry:''},
+    {id:4, code:'TR-004', employee:'منى الشمري', role:'محاسبة', course:'المعايير المحاسبية للقطاع غير الربحي', date:'2026-03-15', hours:20, provider:'الهيئة السعودية للمراجعين', certified:true, expiry:''},
+    {id:5, code:'TR-005', employee:'أحمد البلوي', role:'تقنية معلومات', course:'حماية بيانات المستفيدين', date:'', hours:8, provider:'مخطط', certified:false, expiry:''},
+  ],
+  documents: [
+    {id:1, code:'QM-01', title:'دليل الجودة', version:'2.1', issueDate:'2026-01-01', reviewDate:'2027-01-01', owner:'مسؤول الجودة', status:'ساري', location:'C:\\ISO\\Manual\\'},
+    {id:2, code:'PR-01', title:'إجراء ضبط الوثائق والسجلات', version:'1.3', issueDate:'2026-01-05', reviewDate:'2027-01-05', owner:'مسؤول الجودة', status:'ساري', location:'C:\\ISO\\Procedures\\'},
+    {id:3, code:'PR-02', title:'إجراء التدقيق الداخلي', version:'1.2', issueDate:'2026-01-10', reviewDate:'2027-01-10', owner:'مسؤول الجودة', status:'ساري', location:'C:\\ISO\\Procedures\\'},
+    {id:4, code:'PR-03', title:'إجراء معالجة الشكاوى', version:'2.0', issueDate:'2026-02-01', reviewDate:'2027-02-01', owner:'مدير العمليات', status:'ساري', location:'C:\\ISO\\Procedures\\'},
+    {id:5, code:'PR-04', title:'إجراء تقييم الموردين', version:'1.0', issueDate:'2026-01-15', reviewDate:'2027-01-15', owner:'المشتريات', status:'ساري', location:'C:\\ISO\\Procedures\\'},
+    {id:6, code:'PR-05', title:'إجراء كفالة الأيتام', version:'3.0', issueDate:'2025-12-15', reviewDate:'2026-12-15', owner:'مدير البرامج', status:'تحت المراجعة', location:'C:\\ISO\\Procedures\\'},
+    {id:7, code:'FR-01', title:'نموذج تسجيل مستفيد', version:'1.5', issueDate:'2026-02-10', reviewDate:'2027-02-10', owner:'منسق البرامج', status:'ساري', location:'C:\\ISO\\Forms\\'},
+  ],
+  ack: [
+    {id:1, employee:'عبدالله المطيري', department:'الجودة', document:'دليل الجودة v2.1', ackDate:'2026-01-05', status:'مطّلع'},
+    {id:2, employee:'سارة العتيبي', department:'البرامج', document:'دليل الجودة v2.1', ackDate:'2026-01-06', status:'مطّلع'},
+    {id:3, employee:'فهد الزهراني', department:'المتطوعين', document:'دليل الجودة v2.1', ackDate:'2026-01-08', status:'مطّلع'},
+    {id:4, employee:'منى الشمري', department:'المالية', document:'دليل الجودة v2.1', ackDate:'2026-01-10', status:'مطّلع'},
+    {id:5, employee:'أحمد البلوي', department:'تقنية المعلومات', document:'دليل الجودة v2.1', ackDate:'', status:'لم يطّلع'},
+    {id:6, employee:'هند القحطاني', department:'البرامج', document:'إجراء معالجة الشكاوى v2.0', ackDate:'2026-02-05', status:'مطّلع'},
+    {id:7, employee:'خالد العنزي', department:'المتطوعين', document:'إجراء معالجة الشكاوى v2.0', ackDate:'', status:'لم يطّلع'},
+  ],
+};
+
+/* ---------- Schemas (used by modal forms) ---------- */
+const SCHEMAS = {
+  objectives: {
+    title: 'هدف جودة', icon: '🎯',
+    fields: [
+      {key:'code', label:'رمز الهدف', type:'text', required:true},
+      {key:'title', label:'اسم الهدف', type:'text', required:true},
+      {key:'target', label:'القيمة المستهدفة', type:'number', required:true},
+      {key:'actual', label:'القيمة الفعلية', type:'number', required:true},
+      {key:'unit', label:'الوحدة', type:'text'},
+      {key:'owner', label:'المسؤول', type:'text'},
+      {key:'deadline', label:'تاريخ الإنجاز', type:'date'},
+      {key:'status', label:'الحالة', type:'select', options:['محقق','قيد التنفيذ','متعثر','ملغى']},
+    ],
+  },
+  risks: {
+    title: 'خطر / فرصة', icon: '⚠️',
+    fields: [
+      {key:'code', label:'الرمز', type:'text', required:true},
+      {key:'type', label:'النوع', type:'select', options:['خطر','فرصة']},
+      {key:'source', label:'المصدر', type:'select', options:['تشغيلي','مالي','تنظيمي','تقني','استراتيجي','بيئي']},
+      {key:'desc', label:'الوصف', type:'textarea', required:true},
+      {key:'impact', label:'الأثر (1-5)', type:'number', min:1, max:5},
+      {key:'likelihood', label:'الاحتمالية (1-5)', type:'number', min:1, max:5},
+      {key:'mitigation', label:'إجراء المعالجة', type:'textarea'},
+      {key:'owner', label:'المسؤول', type:'text'},
+      {key:'deadline', label:'الموعد النهائي', type:'date'},
+      {key:'status', label:'الحالة', type:'select', options:['مفتوح','قيد المعالجة','مغلق']},
+    ],
+  },
+  complaints: {
+    title: 'شكوى', icon: '📞',
+    fields: [
+      {key:'code', label:'رقم الشكوى', type:'text', required:true},
+      {key:'date', label:'التاريخ', type:'date', required:true},
+      {key:'source', label:'مصدر الشكوى', type:'select', options:['مستفيد','متبرع','متطوع','موظف','جهة حكومية']},
+      {key:'subject', label:'موضوع الشكوى', type:'textarea', required:true},
+      {key:'severity', label:'الشدة', type:'select', options:['منخفضة','متوسطة','عالية','حرجة']},
+      {key:'rootCause', label:'السبب الجذري', type:'textarea'},
+      {key:'action', label:'الإجراء التصحيحي', type:'textarea'},
+      {key:'responsible', label:'المسؤول', type:'text'},
+      {key:'dueDate', label:'تاريخ الاستحقاق', type:'date'},
+      {key:'status', label:'الحالة', type:'select', options:['مفتوحة','قيد التنفيذ','مغلقة']},
+      {key:'closeDate', label:'تاريخ الإغلاق', type:'date'},
+    ],
+  },
+  ncr: {
+    title: 'حالة عدم مطابقة', icon: '❌',
+    fields: [
+      {key:'code', label:'الرقم', type:'text', required:true},
+      {key:'date', label:'التاريخ', type:'date', required:true},
+      {key:'area', label:'المجال/الإدارة', type:'text', required:true},
+      {key:'desc', label:'وصف عدم المطابقة', type:'textarea', required:true},
+      {key:'severity', label:'الشدة', type:'select', options:['صغيرة','متوسطة','كبيرة','حرجة']},
+      {key:'correctiveAction', label:'الإجراء التصحيحي', type:'textarea'},
+      {key:'responsible', label:'المسؤول', type:'text'},
+      {key:'dueDate', label:'الموعد النهائي', type:'date'},
+      {key:'status', label:'الحالة', type:'select', options:['مفتوح','قيد التنفيذ','مغلق']},
+    ],
+  },
+  audits: {
+    title: 'تدقيق داخلي', icon: '🔍',
+    fields: [
+      {key:'code', label:'رمز التدقيق', type:'text', required:true},
+      {key:'plannedDate', label:'التاريخ المخطط', type:'date', required:true},
+      {key:'actualDate', label:'التاريخ الفعلي', type:'date'},
+      {key:'area', label:'المجال', type:'text', required:true},
+      {key:'auditor', label:'المدقق', type:'text'},
+      {key:'majorNC', label:'عدم مطابقة كبيرة', type:'number', min:0},
+      {key:'minorNC', label:'عدم مطابقة صغيرة', type:'number', min:0},
+      {key:'observations', label:'ملاحظات', type:'number', min:0},
+      {key:'findings', label:'إجمالي النتائج', type:'number', min:0},
+      {key:'status', label:'الحالة', type:'select', options:['مخطط','جاري','مكتمل','مؤجل']},
+      {key:'report', label:'اسم ملف التقرير', type:'text'},
+    ],
+  },
+  suppliers: {
+    title: 'مورد', icon: '🚚',
+    fields: [
+      {key:'code', label:'رمز المورد', type:'text', required:true},
+      {key:'name', label:'اسم المورد', type:'text', required:true},
+      {key:'category', label:'الفئة', type:'text'},
+      {key:'evalDate', label:'تاريخ التقييم', type:'date'},
+      {key:'quality', label:'الجودة (1-10)', type:'number', min:1, max:10},
+      {key:'delivery', label:'الالتزام بالموعد (1-10)', type:'number', min:1, max:10},
+      {key:'price', label:'السعر (1-10)', type:'number', min:1, max:10},
+      {key:'service', label:'الخدمة (1-10)', type:'number', min:1, max:10},
+      {key:'status', label:'الحالة', type:'select', options:['معتمد','تحت الملاحظة','معلق','مرفوض']},
+      {key:'notes', label:'ملاحظات', type:'textarea'},
+    ],
+  },
+  beneficiaries: {
+    title: 'استبيان مستفيدين', icon: '🤝',
+    fields: [
+      {key:'code', label:'رمز الاستبيان', type:'text', required:true},
+      {key:'surveyDate', label:'تاريخ الاستبيان', type:'date'},
+      {key:'program', label:'البرنامج', type:'text', required:true},
+      {key:'count', label:'عدد المستفيدين', type:'number'},
+      {key:'satisfaction', label:'نسبة الرضا %', type:'number', min:0, max:100},
+      {key:'suggestions', label:'أبرز المقترحات', type:'textarea'},
+      {key:'followUp', label:'إجراء المتابعة', type:'textarea'},
+    ],
+  },
+  training: {
+    title: 'تدريب موظف/متطوع', icon: '🎓',
+    fields: [
+      {key:'code', label:'رمز التدريب', type:'text', required:true},
+      {key:'employee', label:'الاسم', type:'text', required:true},
+      {key:'role', label:'الوظيفة', type:'text'},
+      {key:'course', label:'البرنامج التدريبي', type:'text', required:true},
+      {key:'date', label:'تاريخ التدريب', type:'date'},
+      {key:'hours', label:'عدد الساعات', type:'number'},
+      {key:'provider', label:'الجهة المنفذة', type:'text'},
+      {key:'certified', label:'حصل على شهادة', type:'select', options:['true','false']},
+      {key:'expiry', label:'تاريخ انتهاء الشهادة', type:'date'},
+    ],
+  },
+  documents: {
+    title: 'وثيقة مضبوطة', icon: '📚',
+    fields: [
+      {key:'code', label:'رمز الوثيقة', type:'text', required:true},
+      {key:'title', label:'اسم الوثيقة', type:'text', required:true},
+      {key:'version', label:'الإصدار', type:'text'},
+      {key:'issueDate', label:'تاريخ الإصدار', type:'date'},
+      {key:'reviewDate', label:'تاريخ المراجعة القادمة', type:'date'},
+      {key:'owner', label:'المسؤول', type:'text'},
+      {key:'status', label:'الحالة', type:'select', options:['ساري','تحت المراجعة','ملغى','مسودة']},
+      {key:'location', label:'مكان الحفظ', type:'text'},
+    ],
+  },
+  ack: {
+    title: 'اطلاع موظف', icon: '✅',
+    fields: [
+      {key:'employee', label:'الموظف', type:'text', required:true},
+      {key:'department', label:'الإدارة', type:'text'},
+      {key:'document', label:'الوثيقة', type:'text', required:true},
+      {key:'ackDate', label:'تاريخ الاطلاع', type:'date'},
+      {key:'status', label:'الحالة', type:'select', options:['مطّلع','لم يطّلع']},
+    ],
+  },
+};
+
+/* ---------- Storage ---------- */
+function loadData() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (raw) { try { return JSON.parse(raw); } catch(e){} }
+  return JSON.parse(JSON.stringify(SAMPLE_DATA));
+}
+function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA)); }
+let DATA = loadData();
+
+function nextId(arr){ return arr.length ? Math.max(...arr.map(x=>x.id||0))+1 : 1; }
+
+/* ---------- Helpers ---------- */
+function badge(text, color){ return `<span class="badge badge-${color}">${text}</span>`; }
+function statusBadge(s){
+  const map = {
+    'محقق':'green','مكتمل':'green','مغلق':'green','مغلقة':'green','معتمد':'green','ساري':'green','مطّلع':'green',
+    'قيد التنفيذ':'amber','قيد المعالجة':'amber','جاري':'amber','تحت الملاحظة':'amber','تحت المراجعة':'amber',
+    'متعثر':'red','مرفوض':'red','ملغى':'red','حرجة':'red','لم يطّلع':'red','مفتوح':'red','مفتوحة':'red',
+    'مخطط':'blue','مسودة':'blue','معلق':'gray','مؤجل':'gray',
+  };
+  return badge(s||'-', map[s]||'gray');
+}
+function severityBadge(s){
+  const map = {'منخفضة':'green','صغيرة':'green','متوسطة':'amber','عالية':'red','كبيرة':'red','حرجة':'red'};
+  return badge(s||'-', map[s]||'gray');
+}
+function ratingBadge(r){
+  const map = {'A':'green','B':'amber','C':'red','D':'red'};
+  return badge(r||'-', map[r]||'gray');
+}
+function riskScore(impact, likelihood){
+  const s = (impact||0) * (likelihood||0);
+  let color = 'green', level = 'منخفض';
+  if (s >= 15) { color='red'; level='عالي'; }
+  else if (s >= 8) { color='amber'; level='متوسط'; }
+  return `<span class="badge badge-${color}">${s} - ${level}</span>`;
+}
+
+/* ---------- Modal ---------- */
+let editingKey = null, editingId = null;
+function openModal(key, id){
+  editingKey = key; editingId = id;
+  const schema = SCHEMAS[key];
+  const item = id ? DATA[key].find(x=>x.id===id) : {};
+  document.getElementById('modalTitle').innerHTML = `${schema.icon} ${id ? 'تعديل' : 'إضافة'} ${schema.title}`;
+  let html = '<form id="recordForm" class="space-y-3">';
+  for (const f of schema.fields) {
+    const v = item[f.key] ?? '';
+    html += `<div><label class="block text-sm font-semibold text-slate-700 mb-1">${f.label}${f.required?' *':''}</label>`;
+    if (f.type === 'textarea') {
+      html += `<textarea name="${f.key}" rows="2" class="w-full border rounded px-3 py-2 text-sm" ${f.required?'required':''}>${v}</textarea>`;
+    } else if (f.type === 'select') {
+      html += `<select name="${f.key}" class="w-full border rounded px-3 py-2 text-sm">`;
+      html += '<option value="">- اختر -</option>';
+      for (const o of f.options) html += `<option value="${o}" ${v==o?'selected':''}>${o}</option>`;
+      html += `</select>`;
+    } else {
+      const min = f.min !== undefined ? `min="${f.min}"` : '';
+      const max = f.max !== undefined ? `max="${f.max}"` : '';
+      html += `<input type="${f.type}" name="${f.key}" value="${v}" ${min} ${max} class="w-full border rounded px-3 py-2 text-sm" ${f.required?'required':''} />`;
+    }
+    html += '</div>';
+  }
+  html += '<div class="flex gap-2 pt-3 border-t"><button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded font-semibold">حفظ</button>';
+  if (id) html += `<button type="button" onclick="deleteRecord('${key}',${id})" class="px-4 bg-red-600 hover:bg-red-700 text-white py-2 rounded">حذف</button>`;
+  html += '<button type="button" onclick="closeModal()" class="px-4 bg-slate-200 py-2 rounded">إلغاء</button></div></form>';
+  document.getElementById('modalBody').innerHTML = html;
+  document.getElementById('modal').classList.remove('hidden');
+  document.getElementById('recordForm').onsubmit = (e)=>{ e.preventDefault(); saveRecord(); };
+}
+function closeModal(){ document.getElementById('modal').classList.add('hidden'); }
+function saveRecord(){
+  const form = document.getElementById('recordForm');
+  const fd = new FormData(form);
+  const obj = {};
+  for (const [k,v] of fd.entries()) {
+    if (v === '') obj[k] = '';
+    else if (!isNaN(v) && SCHEMAS[editingKey].fields.find(f=>f.key===k)?.type==='number') obj[k] = Number(v);
+    else if (v === 'true') obj[k] = true;
+    else if (v === 'false') obj[k] = false;
+    else obj[k] = v;
+  }
+  if (editingId) {
+    const idx = DATA[editingKey].findIndex(x=>x.id===editingId);
+    DATA[editingKey][idx] = {...DATA[editingKey][idx], ...obj};
+  } else {
+    obj.id = nextId(DATA[editingKey]);
+    DATA[editingKey].push(obj);
+  }
+  saveData(); closeModal(); renderView(currentView);
+}
+function deleteRecord(key, id){
+  if (!confirm('هل أنت متأكد من الحذف؟')) return;
+  DATA[key] = DATA[key].filter(x=>x.id!==id);
+  saveData(); closeModal(); renderView(currentView);
+}
+
+/* ---------- Views ---------- */
+let currentView = 'dashboard';
+const PAGE_META = {
+  dashboard:    {title:'لوحة التحكم', subtitle:'نظرة شاملة على أداء نظام الجودة'},
+  objectives:   {title:'أهداف الجودة', subtitle:'متابعة الأهداف ونسب التحقق'},
+  risks:        {title:'سجل المخاطر والفرص', subtitle:'تحديد ومعالجة المخاطر والفرص'},
+  complaints:   {title:'الشكاوى والإجراءات التصحيحية', subtitle:'استقبال ومعالجة الشكاوى'},
+  ncr:          {title:'سجل عدم المطابقة (NCR)', subtitle:'حالات عدم المطابقة وإجراءاتها'},
+  audits:       {title:'التدقيق الداخلي', subtitle:'خطة وتنفيذ التدقيقات الداخلية'},
+  suppliers:    {title:'تقييم الموردين', subtitle:'تقييم وتصنيف الموردين'},
+  beneficiaries:{title:'المستفيدون والاستبيانات', subtitle:'قياس رضا المستفيدين'},
+  training:     {title:'التدريب والكفاءات', subtitle:'سجل التدريب والشهادات'},
+  documents:    {title:'ضبط الوثائق', subtitle:'إدارة وثائق نظام الجودة'},
+  ack:          {title:'اطلاع الموظفين', subtitle:'متابعة اطلاع الموظفين على الوثائق'},
+  settings:     {title:'النسخ الاحتياطي والإعدادات', subtitle:'إدارة البيانات'},
+};
+function setActiveLink(view){
+  document.querySelectorAll('.sidebar-link').forEach(el=>el.classList.toggle('active', el.dataset.view===view));
+  document.getElementById('pageTitle').textContent = PAGE_META[view].title;
+  document.getElementById('pageSubtitle').textContent = PAGE_META[view].subtitle;
+}
+function renderView(view){
+  currentView = view; setActiveLink(view);
+  const c = document.getElementById('viewContainer');
+  if (view === 'dashboard') c.innerHTML = renderDashboard();
+  else if (view === 'settings') c.innerHTML = renderSettings();
+  else c.innerHTML = renderListView(view);
+  if (view === 'dashboard') drawCharts();
+}
+
+/* ---------- List View (generic) ---------- */
+function renderListView(key){
+  const schema = SCHEMAS[key];
+  const items = DATA[key] || [];
+  let cols = [];
+  if (key==='objectives') cols = [['code','الرمز'],['title','الهدف'],['target','المستهدف'],['actual','الفعلي'],['progress','نسبة التحقق'],['owner','المسؤول'],['deadline','الموعد'],['status','الحالة']];
+  else if (key==='risks') cols = [['code','الرمز'],['type','النوع'],['source','المصدر'],['desc','الوصف'],['score','الدرجة'],['mitigation','المعالجة'],['owner','المسؤول'],['status','الحالة']];
+  else if (key==='complaints') cols = [['code','الرقم'],['date','التاريخ'],['source','المصدر'],['subject','الموضوع'],['severity','الشدة'],['responsible','المسؤول'],['dueDate','الاستحقاق'],['status','الحالة']];
+  else if (key==='ncr') cols = [['code','الرقم'],['date','التاريخ'],['area','المجال'],['desc','الوصف'],['severity','الشدة'],['responsible','المسؤول'],['dueDate','الاستحقاق'],['status','الحالة']];
+  else if (key==='audits') cols = [['code','الرمز'],['plannedDate','التاريخ المخطط'],['actualDate','التاريخ الفعلي'],['area','المجال'],['auditor','المدقق'],['findings','النتائج'],['status','الحالة']];
+  else if (key==='suppliers') cols = [['code','الرمز'],['name','المورد'],['category','الفئة'],['evalDate','تاريخ التقييم'],['score','الدرجة'],['rating','التصنيف'],['status','الحالة']];
+  else if (key==='beneficiaries') cols = [['code','الرمز'],['surveyDate','التاريخ'],['program','البرنامج'],['count','العدد'],['satisfaction','الرضا %'],['suggestions','المقترحات']];
+  else if (key==='training') cols = [['code','الرمز'],['employee','الاسم'],['role','الوظيفة'],['course','البرنامج'],['date','التاريخ'],['hours','الساعات'],['provider','الجهة'],['certified','شهادة']];
+  else if (key==='documents') cols = [['code','الرمز'],['title','الوثيقة'],['version','الإصدار'],['issueDate','الإصدار'],['reviewDate','المراجعة'],['owner','المسؤول'],['status','الحالة']];
+  else if (key==='ack') cols = [['employee','الموظف'],['department','الإدارة'],['document','الوثيقة'],['ackDate','تاريخ الاطلاع'],['status','الحالة']];
+
+  let html = `
+    <div class="bg-white rounded-xl shadow-sm p-4 mb-4 flex flex-wrap gap-3 items-center justify-between no-print">
+      <div class="flex gap-2 items-center flex-1 min-w-[200px]">
+        <input type="text" id="searchInput" placeholder="🔍 بحث..." class="border rounded-lg px-3 py-2 text-sm flex-1" oninput="filterTable()" />
+        <span class="text-sm text-slate-500">العدد: <b id="rowCount">${items.length}</b></span>
+      </div>
+      <button onclick="openModal('${key}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+        ➕ إضافة ${schema.title}
+      </button>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+      <table id="dataTable">
+        <thead><tr>${cols.map(c=>`<th>${c[1]}</th>`).join('')}<th class="no-print">إجراء</th></tr></thead>
+        <tbody>`;
+
+  for (const item of items) {
+    html += '<tr>';
+    for (const [k] of cols) {
+      let v = item[k];
+      if (k==='progress') {
+        const pct = item.target ? Math.min(100, Math.round((item.actual/item.target)*100)) : 0;
+        const color = pct>=100?'bg-emerald-500':pct>=70?'bg-amber-500':'bg-red-500';
+        v = `<div class="flex items-center gap-2"><div class="w-20 bg-slate-200 rounded h-2"><div class="${color} h-2 rounded" style="width:${pct}%"></div></div><span class="text-xs">${pct}%</span></div>`;
+      }
+      else if (k==='score' && key==='risks') v = riskScore(item.impact, item.likelihood);
+      else if (k==='score' && key==='suppliers') {
+        const s = (item.quality||0)+(item.delivery||0)+(item.price||0)+(item.service||0);
+        v = `<b>${s}/40</b>`;
+      }
+      else if (k==='findings' && key==='audits') {
+        v = item.findings || ((item.majorNC||0)+(item.minorNC||0)+(item.observations||0));
+        v = `<span title="كبيرة:${item.majorNC||0} | صغيرة:${item.minorNC||0} | ملاحظات:${item.observations||0}">${v}</span>`;
+      }
+      else if (k==='status') v = statusBadge(v);
+      else if (k==='severity') v = severityBadge(v);
+      else if (k==='rating') v = ratingBadge(v);
+      else if (k==='satisfaction') {
+        const pct = v||0;
+        const color = pct>=90?'bg-emerald-500':pct>=75?'bg-amber-500':'bg-red-500';
+        v = `<div class="flex items-center gap-2"><div class="w-16 bg-slate-200 rounded h-2"><div class="${color} h-2 rounded" style="width:${pct}%"></div></div><span class="text-xs">${pct}%</span></div>`;
+      }
+      else if (k==='certified') v = v ? '✅' : '⌛';
+      else if (typeof v === 'string' && v.length > 60) v = v.slice(0,60)+'…';
+      else if (v === undefined || v === '') v = '<span class="text-slate-400">-</span>';
+      html += `<td>${v}</td>`;
+    }
+    html += `<td class="no-print"><button onclick="openModal('${key}',${item.id})" class="text-blue-600 hover:underline text-sm">✏️ تعديل</button></td>`;
+    html += '</tr>';
+  }
+  if (items.length === 0) html += `<tr><td colspan="${cols.length+1}" class="text-center py-8 text-slate-400">لا توجد بيانات بعد - اضغط "إضافة" للبدء</td></tr>`;
+  html += '</tbody></table></div>';
+  return html;
+}
+
+function filterTable(){
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const rows = document.querySelectorAll('#dataTable tbody tr');
+  let visible = 0;
+  rows.forEach(r => {
+    const show = r.textContent.toLowerCase().includes(q);
+    r.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('rowCount').textContent = visible;
+}
+
+/* ---------- Dashboard ---------- */
+function renderDashboard(){
+  const objs = DATA.objectives || [];
+  const achieved = objs.filter(o=>o.status==='محقق').length;
+  const inProgress = objs.filter(o=>o.status==='قيد التنفيذ').length;
+  const overdue = objs.filter(o=>o.status==='متعثر').length;
+  const objAchievementRate = objs.length ? Math.round((achieved/objs.length)*100) : 0;
+
+  const risks = DATA.risks || [];
+  const highRisks = risks.filter(r=>r.type==='خطر' && (r.impact||0)*(r.likelihood||0) >= 15).length;
+  const openRisks = risks.filter(r=>r.status!=='مغلق').length;
+
+  const compl = DATA.complaints || [];
+  const openCompl = compl.filter(c=>c.status!=='مغلقة').length;
+  const closedCompl = compl.filter(c=>c.status==='مغلقة').length;
+  const complClosureRate = compl.length ? Math.round((closedCompl/compl.length)*100) : 0;
+
+  const ncr = DATA.ncr || [];
+  const openNCR = ncr.filter(n=>n.status!=='مغلق').length;
+
+  const audits = DATA.audits || [];
+  const completedAudits = audits.filter(a=>a.status==='مكتمل').length;
+  const auditCoverage = audits.length ? Math.round((completedAudits/audits.length)*100) : 0;
+
+  const suppliers = DATA.suppliers || [];
+  const aSuppliers = suppliers.filter(s=>s.rating==='A').length;
+  const supScore = suppliers.length ? Math.round(suppliers.reduce((a,s)=>a + ((s.quality||0)+(s.delivery||0)+(s.price||0)+(s.service||0)), 0) / (suppliers.length*40) * 100) : 0;
+
+  const ben = DATA.beneficiaries || [];
+  const avgSat = ben.length ? Math.round(ben.reduce((a,b)=>a+(b.satisfaction||0),0)/ben.length) : 0;
+  const totalBen = ben.reduce((a,b)=>a+(b.count||0),0);
+
+  const train = DATA.training || [];
+  const certifiedTrain = train.filter(t=>t.certified).length;
+  const trainRate = train.length ? Math.round((certifiedTrain/train.length)*100) : 0;
+
+  const ack = DATA.ack || [];
+  const ackedCount = ack.filter(a=>a.status==='مطّلع').length;
+  const ackRate = ack.length ? Math.round((ackedCount/ack.length)*100) : 0;
+
+  const docs = DATA.documents || [];
+  const validDocs = docs.filter(d=>d.status==='ساري').length;
+  const docHealth = docs.length ? Math.round((validDocs/docs.length)*100) : 0;
+
+  // Health Score (weighted)
+  const health = Math.round(
+    (objAchievementRate * 0.20) +
+    (complClosureRate * 0.15) +
+    (auditCoverage * 0.10) +
+    (supScore * 0.10) +
+    (avgSat * 0.20) +
+    (trainRate * 0.10) +
+    (ackRate * 0.10) +
+    (docHealth * 0.05)
+  );
+  const healthColor = health>=85?'emerald':health>=70?'amber':'red';
+
+  const alerts = [];
+  if (openCompl > 0) alerts.push({type:'warning', text:`يوجد ${openCompl} شكوى مفتوحة تحتاج معالجة`});
+  if (highRisks > 0) alerts.push({type:'danger', text:`يوجد ${highRisks} مخاطر عالية تتطلب إجراء فوري`});
+  if (overdue > 0) alerts.push({type:'danger', text:`${overdue} هدف جودة متعثر`});
+  if (openNCR > 0) alerts.push({type:'warning', text:`${openNCR} حالة عدم مطابقة مفتوحة`});
+  const ackPending = ack.filter(a=>a.status==='لم يطّلع').length;
+  if (ackPending > 0) alerts.push({type:'info', text:`${ackPending} موظف لم يطّلعوا على الوثائق المحدّثة`});
+  // Documents needing review soon
+  const today = new Date();
+  const upcomingReview = docs.filter(d=>{
+    if(!d.reviewDate) return false;
+    const r = new Date(d.reviewDate);
+    const diff = (r-today)/(1000*60*60*24);
+    return diff <= 60 && diff >= 0;
+  }).length;
+  if (upcomingReview > 0) alerts.push({type:'info', text:`${upcomingReview} وثيقة تحتاج مراجعة خلال 60 يوماً`});
+
+  return `
+    <!-- Health Score -->
+    <div class="bg-gradient-to-l from-${healthColor}-600 to-${healthColor}-500 text-white rounded-2xl shadow-lg p-6 mb-6">
+      <div class="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <div class="text-sm opacity-90">المؤشر الإجمالي لصحة نظام الجودة</div>
+          <div class="text-5xl font-bold mt-1">${health}<span class="text-2xl opacity-75">%</span></div>
+          <div class="text-sm opacity-90 mt-2">${health>=85?'ممتاز - النظام يعمل بكفاءة عالية':health>=70?'جيد - يحتاج تحسينات في بعض المؤشرات':'يحتاج تدخل عاجل لتحسين الأداء'}</div>
+        </div>
+        <div class="text-right">
+          <div class="text-xs opacity-80">آخر تحديث</div>
+          <div class="font-semibold">${new Date().toLocaleDateString('ar-SA')}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alerts -->
+    ${alerts.length ? `
+    <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
+      <h3 class="font-bold mb-3 flex items-center gap-2">🔔 التنبيهات (${alerts.length})</h3>
+      <div class="space-y-2">
+        ${alerts.map(a=>{
+          const c = a.type==='danger'?'red':a.type==='warning'?'amber':'blue';
+          const icon = a.type==='danger'?'🚨':a.type==='warning'?'⚠️':'ℹ️';
+          return `<div class="flex items-center gap-3 p-3 bg-${c}-50 border-r-4 border-${c}-500 rounded"><span>${icon}</span><span class="text-sm text-${c}-900">${a.text}</span></div>`;
+        }).join('')}
+      </div>
+    </div>` : ''}
+
+    <!-- KPI Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      ${kpiCard('🎯','تحقق الأهداف', objAchievementRate+'%', `${achieved}/${objs.length} هدف محقق`, 'blue')}
+      ${kpiCard('📞','إغلاق الشكاوى', complClosureRate+'%', `${closedCompl} مغلقة | ${openCompl} مفتوحة`, 'emerald')}
+      ${kpiCard('⚠️','المخاطر المفتوحة', openRisks, `${highRisks} عالية الخطورة`, highRisks>0?'red':'amber')}
+      ${kpiCard('🔍','تنفيذ التدقيق', auditCoverage+'%', `${completedAudits}/${audits.length} تدقيق منفذ`, 'indigo')}
+      ${kpiCard('🤝','رضا المستفيدين', avgSat+'%', `${totalBen.toLocaleString('ar-SA')} مستفيد`, avgSat>=85?'emerald':'amber')}
+      ${kpiCard('🚚','جودة الموردين', supScore+'%', `${aSuppliers} مورد فئة A`, 'blue')}
+      ${kpiCard('🎓','تدريب الموظفين', trainRate+'%', `${certifiedTrain}/${train.length} شهادة`, 'purple')}
+      ${kpiCard('✅','اطلاع الموظفين', ackRate+'%', `${ackedCount}/${ack.length} مطّلع`, ackRate>=90?'emerald':'amber')}
+    </div>
+
+    <!-- Charts -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <h3 class="font-bold mb-3">📊 تحقق أهداف الجودة</h3>
+        <canvas id="chartObjectives" height="200"></canvas>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <h3 class="font-bold mb-3">⚠️ توزيع المخاطر حسب المصدر</h3>
+        <canvas id="chartRisks" height="200"></canvas>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <h3 class="font-bold mb-3">😊 رضا المستفيدين حسب البرنامج</h3>
+        <canvas id="chartBeneficiaries" height="200"></canvas>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <h3 class="font-bold mb-3">🚚 تصنيف الموردين</h3>
+        <canvas id="chartSuppliers" height="200"></canvas>
+      </div>
+    </div>
+
+    <!-- Quick Tables -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <h3 class="font-bold mb-3">🔥 أعلى المخاطر</h3>
+        <table class="text-sm"><thead><tr><th>الرمز</th><th>الوصف</th><th>الدرجة</th></tr></thead><tbody>
+          ${[...risks].sort((a,b)=>(b.impact*b.likelihood)-(a.impact*a.likelihood)).slice(0,5).map(r=>`
+            <tr><td>${r.code}</td><td>${(r.desc||'').slice(0,40)}</td><td>${riskScore(r.impact,r.likelihood)}</td></tr>
+          `).join('') || '<tr><td colspan="3" class="text-center text-slate-400 py-4">لا يوجد</td></tr>'}
+        </tbody></table>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <h3 class="font-bold mb-3">📋 آخر الشكاوى</h3>
+        <table class="text-sm"><thead><tr><th>الرقم</th><th>التاريخ</th><th>الموضوع</th><th>الحالة</th></tr></thead><tbody>
+          ${[...compl].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).slice(0,5).map(c=>`
+            <tr><td>${c.code}</td><td>${c.date}</td><td>${(c.subject||'').slice(0,30)}</td><td>${statusBadge(c.status)}</td></tr>
+          `).join('') || '<tr><td colspan="4" class="text-center text-slate-400 py-4">لا يوجد</td></tr>'}
+        </tbody></table>
+      </div>
+    </div>
+  `;
+}
+
+function kpiCard(icon, label, value, sub, color){
+  return `
+    <div class="bg-white rounded-xl shadow-sm p-4 border-r-4 border-${color}-500">
+      <div class="flex items-start justify-between">
+        <div>
+          <div class="text-xs text-slate-500">${label}</div>
+          <div class="text-2xl font-bold mt-1 text-slate-800">${value}</div>
+          <div class="text-xs text-slate-500 mt-1">${sub}</div>
+        </div>
+        <div class="text-3xl opacity-70">${icon}</div>
+      </div>
+    </div>`;
+}
+
+function drawCharts(){
+  // Objectives
+  const objs = DATA.objectives || [];
+  new Chart(document.getElementById('chartObjectives'), {
+    type:'bar',
+    data:{
+      labels: objs.map(o=>o.code),
+      datasets:[
+        {label:'المستهدف', data:objs.map(o=>o.target), backgroundColor:'#94a3b8'},
+        {label:'الفعلي', data:objs.map(o=>o.actual), backgroundColor:'#1e40af'},
+      ]
+    },
+    options:{responsive:true, plugins:{legend:{position:'bottom'}}}
+  });
+
+  // Risks by source
+  const risks = DATA.risks || [];
+  const bySource = {};
+  risks.forEach(r=>{ bySource[r.source||'-'] = (bySource[r.source||'-']||0)+1; });
+  new Chart(document.getElementById('chartRisks'), {
+    type:'doughnut',
+    data:{
+      labels: Object.keys(bySource),
+      datasets:[{data: Object.values(bySource), backgroundColor:['#ef4444','#f59e0b','#3b82f6','#8b5cf6','#10b981','#64748b']}]
+    },
+    options:{responsive:true, plugins:{legend:{position:'bottom'}}}
+  });
+
+  // Beneficiaries
+  const ben = DATA.beneficiaries || [];
+  new Chart(document.getElementById('chartBeneficiaries'), {
+    type:'bar', data:{
+      labels: ben.map(b=>b.program),
+      datasets:[{label:'نسبة الرضا %', data:ben.map(b=>b.satisfaction), backgroundColor:'#10b981'}]
+    },
+    options:{indexAxis:'y', responsive:true, plugins:{legend:{display:false}}, scales:{x:{max:100}}}
+  });
+
+  // Suppliers
+  const sup = DATA.suppliers || [];
+  const ratings = {A:0,B:0,C:0,D:0};
+  sup.forEach(s=>{ if(ratings[s.rating]!==undefined) ratings[s.rating]++; });
+  new Chart(document.getElementById('chartSuppliers'), {
+    type:'pie',
+    data:{
+      labels:['A - ممتاز','B - جيد','C - يحتاج تحسين','D - مرفوض'],
+      datasets:[{data: Object.values(ratings), backgroundColor:['#10b981','#3b82f6','#f59e0b','#ef4444']}]
+    },
+    options:{responsive:true, plugins:{legend:{position:'bottom'}}}
+  });
+}
+
+/* ---------- Settings / Backup ---------- */
+function renderSettings(){
+  const counts = Object.keys(SCHEMAS).map(k=>`<tr><td>${SCHEMAS[k].icon} ${SCHEMAS[k].title}</td><td><b>${(DATA[k]||[]).length}</b></td></tr>`).join('');
+  return `
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <h3 class="font-bold mb-3">📦 إحصائيات السجلات</h3>
+        <table class="text-sm">${counts}</table>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <h3 class="font-bold mb-3">⚙️ إدارة البيانات</h3>
+        <div class="space-y-3">
+          <button onclick="exportAll()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded font-semibold">⬇️ تصدير نسخة احتياطية (JSON)</button>
+          <label class="block w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded font-semibold text-center cursor-pointer">⬆️ استيراد نسخة احتياطية
+            <input type="file" accept=".json" class="hidden" onchange="importAll(event)" />
+          </label>
+          <button onclick="loadSample()" class="w-full bg-amber-600 hover:bg-amber-700 text-white py-2 rounded font-semibold">🔄 إعادة تحميل البيانات النموذجية</button>
+          <button onclick="clearAll()" class="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded font-semibold">🗑️ تفريغ النظام (حذف كل البيانات)</button>
+        </div>
+        <p class="text-xs text-slate-500 mt-4">💡 البيانات محفوظة محلياً في متصفحك (localStorage). يُنصح بأخذ نسخة احتياطية أسبوعياً.</p>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-5 lg:col-span-2">
+        <h3 class="font-bold mb-3">🌐 نشر النظام على الويب</h3>
+        <div class="text-sm space-y-2 text-slate-700">
+          <p>هذا النظام عبارة عن ملف HTML واحد يعمل في أي متصفح. لجعله متاحاً لجميع موظفي الجمعية:</p>
+          <ol class="list-decimal pr-6 space-y-1">
+            <li><b>الأسهل (مجاني):</b> ارفع الملف على <a href="https://app.netlify.com/drop" target="_blank" class="text-blue-600 underline">Netlify Drop</a> أو <a href="https://pages.cloudflare.com" target="_blank" class="text-blue-600 underline">Cloudflare Pages</a> - سحب وإفلات.</li>
+            <li><b>للخصوصية الكاملة:</b> ضع الملف على شبكة الجمعية الداخلية (Intranet) عبر IIS أو Apache.</li>
+            <li><b>عبر GitHub:</b> أنشئ Repository وفعّل GitHub Pages.</li>
+            <li><b>ملاحظة:</b> البيانات تُحفظ في متصفح كل مستخدم. للمشاركة المركزية تحتاج قاعدة بيانات (تطوير لاحق).</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function exportAll(){
+  const blob = new Blob([JSON.stringify(DATA, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `qms_backup_${new Date().toISOString().slice(0,10)}.json`;
+  a.click(); URL.revokeObjectURL(url);
+}
+function importAll(event){
+  const f = event.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = e => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      if (!confirm('سيتم استبدال جميع البيانات الحالية. هل تريد المتابعة؟')) return;
+      DATA = parsed; saveData(); renderView(currentView);
+      alert('تم الاستيراد بنجاح ✅');
+    } catch(err){ alert('ملف غير صالح ❌'); }
+  };
+  r.readAsText(f);
+}
+function loadSample(){
+  if (!confirm('سيتم استبدال البيانات الحالية بالبيانات النموذجية. متابعة؟')) return;
+  DATA = JSON.parse(JSON.stringify(SAMPLE_DATA)); saveData(); renderView(currentView);
+}
+function clearAll(){
+  if (!confirm('تحذير: سيتم حذف جميع البيانات نهائياً. متابعة؟')) return;
+  if (!confirm('تأكيد أخير - هل أنت متأكد تماماً؟')) return;
+  DATA = {}; Object.keys(SCHEMAS).forEach(k=>DATA[k]=[]);
+  saveData(); renderView(currentView);
+}
+
+/* ---------- Init ---------- */
+document.querySelectorAll('.sidebar-link').forEach(el=>{
+  el.addEventListener('click', ()=>renderView(el.dataset.view));
+});
+renderView('dashboard');
+</script>
+</body>
+</html>
