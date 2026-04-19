@@ -75,14 +75,14 @@ router.post('/login', loginIpLimiter, loginLimiter, asyncHandler(async (req, res
     data: {
       userId: user.id,
       token: refreshToken,
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      expiresAt: new Date(Date.now() + config.jwt.refreshTokenMaxAgeMs),
     },
   });
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
   await logAuth(user.id, 'LOGIN', req);
 
   res.cookie('token', token, {
-    httpOnly: true, secure: config.env === 'production', sameSite: 'lax', maxAge: 8 * 60 * 60 * 1000,
+    httpOnly: true, secure: config.env === 'production', sameSite: 'lax', maxAge: config.jwt.cookieMaxAgeMs,
   });
 
   res.json({
