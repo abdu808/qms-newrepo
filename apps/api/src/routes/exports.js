@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { prisma } from '../db.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { activeWhere } from '../lib/dataHelpers.js';
-import { NotFound } from '../utils/errors.js';
+import { NotFound, Forbidden } from '../utils/errors.js';
+import { can } from '../lib/permissions.js';
 import ExcelJS from 'exceljs';
 
 const router = Router();
@@ -297,11 +298,27 @@ const CONFIGS = {
   },
   performanceReviews: {
     label: 'تقييمات الأداء',
-    fetch: () => prisma.performanceReview.findMany({
-      where: activeWhere(),
-      include: { employee: { select: { name: true } } },
-      orderBy: { createdAt: 'desc' },
-    }),
+    fetch: async () => {
+      const items = await prisma.performanceReview.findMany({
+        where: activeWhere(),
+        orderBy: { createdAt: 'desc' },
+      });
+      const employeeIds = [...new Set(items.map(item => item.employeeId).filter(Boolean))];
+      const employees = employeeIds.length
+        ? await prisma.user.findMany({
+          where: { id: { in: employeeIds } },
+          select: { id: true, name: true },
+        })
+        : [];
+      const employeeNames = new Map(employees.map(employee => [employee.id, employee.name]));
+      return items.map(item => ({
+        ...item,
+        employeeName: employeeNames.get(item.employeeId) || item.employeeId,
+        overallScore: item.overallRating,
+        strengthsNotes: item.strengths,
+        improvementNotes: item.areasToImprove,
+      }));
+    },
     cols: [
       { key: 'code', label: 'الرمز' },
       { key: 'employeeName', label: 'الموظف' },
@@ -349,6 +366,30 @@ const CONFIGS = {
   },
 };
 
+const EXPORT_RESOURCE = {
+  objectives: 'objectives',
+  risks: 'risks',
+  complaints: 'complaints',
+  ncr: 'ncr',
+  suppliers: 'suppliers',
+  beneficiaries: 'beneficiaries',
+  training: 'training',
+  audits: 'audits',
+  donations: 'donations',
+  strategicGoals: 'strategic-goals',
+  operationalActivities: 'operational-activities',
+  swot: 'swot',
+  interestedParties: 'interested-parties',
+  processes: 'processes',
+  managementReview: 'management-review',
+  competence: 'competence',
+  communication: 'communication',
+  ackDocuments: 'ack-documents',
+  performanceReviews: 'performance-reviews',
+  improvementProjects: 'improvement-projects',
+  auditChecklists: 'audit-checklists',
+};
+
 // preprocess: للتصدير، نُسطِّح حقول الـ relation والمصفوفات قبل العرض
 const flattenForExport = (item, cfg) => {
   const out = { ...item };
@@ -359,6 +400,8 @@ const flattenForExport = (item, cfg) => {
 
 router.get('/:model', asyncHandler(async (req, res) => {
   const cfg = CONFIGS[req.params.model];
+  const resource = EXPORT_RESOURCE[req.params.model] || req.params.model;
+  if (cfg && !can(req.user, resource, 'read')) throw Forbidden('ليس لديك صلاحية تصدير هذا المورد');
   if (!cfg) throw NotFound('نموذج التصدير غير موجود');
 
   const items = await cfg.fetch();

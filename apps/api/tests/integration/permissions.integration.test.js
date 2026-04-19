@@ -78,4 +78,21 @@ describe('RBAC alignment with permissions matrix', () => {
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
   });
+
+  it('يحجب EMPLOYEE عن تصدير performance reviews المقيّدة', async () => {
+    const employee = await createUser({ email: 'perm-export-emp@test.local', role: 'EMPLOYEE' });
+    const { token } = await loginAs(app, employee.email);
+
+    const res = await authed(app, token).get('/api/exports/performanceReviews');
+    expect(res.status).toBe(403);
+  });
+
+  it('يسمح لـ DEPT_MANAGER بتصدير performance reviews وفق صلاحية القراءة', async () => {
+    const manager = await createUser({ email: 'perm-export-mgr@test.local', role: 'DEPT_MANAGER' });
+    const { token } = await loginAs(app, manager.email);
+
+    const res = await authed(app, token).get('/api/exports/performanceReviews');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  });
 });
