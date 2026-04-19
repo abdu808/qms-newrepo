@@ -13,6 +13,7 @@ import { Router } from 'express';
 import { prisma } from '../db.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { authorize } from '../middleware/auth.js';
+import { requireAction } from '../lib/permissions.js';
 import { parsePagination, paginationEnvelope } from '../utils/pagination.js';
 
 const router = Router();
@@ -39,9 +40,9 @@ function buildWhere(q) {
   return where;
 }
 
-// Lightweight timeline endpoint per entity — accessible to any authenticated user.
-// Returns up to 50 recent audit events for a single record. Used by DetailShell drawer.
-router.get('/for/:entityType/:entityId', asyncHandler(async (req, res) => {
+// Lightweight timeline endpoint per entity.
+// Still protected by the audit-log RBAC policy because timeline data is sensitive.
+router.get('/for/:entityType/:entityId', requireAction('audit-log', 'read'), asyncHandler(async (req, res) => {
   const { entityType, entityId } = req.params;
   const items = await prisma.auditLog.findMany({
     where: { entityType, entityId },
@@ -52,7 +53,7 @@ router.get('/for/:entityType/:entityId', asyncHandler(async (req, res) => {
   res.json({ ok: true, items });
 }));
 
-router.get('/', authorize('SUPER_ADMIN', 'QUALITY_MANAGER', 'GUEST_AUDITOR'), asyncHandler(async (req, res) => {
+router.get('/', requireAction('audit-log', 'read'), asyncHandler(async (req, res) => {
   const { page, limit, skip } = parsePagination(req, { defaultLimit: 50, maxLimit: 200 });
   const where = buildWhere(req.query);
 
@@ -73,7 +74,7 @@ router.get('/', authorize('SUPER_ADMIN', 'QUALITY_MANAGER', 'GUEST_AUDITOR'), as
  * تصدير السجل بنفس الفلاتر — حتى سقف 10,000 سطر (حماية للذاكرة).
  * ISO 7.5.3.2(b) — قابلية الاسترجاع للمراجعة الخارجية.
  */
-router.get('/export', authorize('SUPER_ADMIN', 'QUALITY_MANAGER', 'GUEST_AUDITOR'), asyncHandler(async (req, res) => {
+router.get('/export', requireAction('audit-log', 'read'), asyncHandler(async (req, res) => {
   const where = buildWhere(req.query);
   const MAX_EXPORT = 10000;
 

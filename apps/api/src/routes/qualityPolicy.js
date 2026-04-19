@@ -9,6 +9,7 @@ const ACTIVATE_ROLES = ['SUPER_ADMIN', 'QUALITY_MANAGER'];
 
 const base = crudRouter({
   model: 'qualityPolicy',
+  resource: 'quality-policy',
   searchFields: ['title', 'content', 'version'],
   allowedSortFields: ['createdAt', 'effectiveDate', 'active'],
   beforeCreate: async (data) => {
