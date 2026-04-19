@@ -4,7 +4,10 @@ set -e
 echo "[startup] Waiting for database to be ready..."
 MAX_RETRIES=30
 i=0
-until npx prisma db push --accept-data-loss; do
+# Apply schema changes without allowing destructive drift at startup.
+# If the target DB needs a destructive change, fail loudly instead of
+# silently dropping data during container boot.
+until npx prisma db push --skip-generate; do
   i=$((i + 1))
   if [ $i -ge $MAX_RETRIES ]; then
     echo "[startup] Database unavailable after $MAX_RETRIES attempts. Exiting."

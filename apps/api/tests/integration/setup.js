@@ -14,6 +14,11 @@ import { execSync } from 'child_process';
 let container = null;
 let prevUrl = null;
 
+export async function getPrisma() {
+  const mod = await import('../../src/db.js');
+  return mod.prisma;
+}
+
 export async function setupTestDb() {
   container = await new PostgreSqlContainer('postgres:16-alpine')
     .withDatabase('qms_test')
@@ -39,6 +44,12 @@ export async function setupTestDb() {
 }
 
 export async function teardownTestDb() {
+  try {
+    const prisma = await getPrisma();
+    await prisma.$disconnect();
+  } catch {
+    // Ignore disconnect errors if Prisma was never initialized in a given file.
+  }
   if (container) {
     await container.stop();
     container = null;

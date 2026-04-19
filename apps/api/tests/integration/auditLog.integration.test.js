@@ -2,14 +2,18 @@
  * auditLog.integration.test.js — فلترة + تصدير سجل النشاط.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { setupTestDb, teardownTestDb, buildApp } from './setup.js';
-import { prisma } from '../../src/db.js';
+import { setupTestDb, teardownTestDb, buildApp, getPrisma } from './setup.js';
 import { createUser } from './helpers/factories.js';
 import { loginAs, authed } from './helpers/auth.js';
 
 let app;
+let prisma;
 
-beforeAll(async () => { await setupTestDb(); app = await buildApp(); }, 120_000);
+beforeAll(async () => {
+  await setupTestDb();
+  prisma = await getPrisma();
+  app = await buildApp();
+}, 120_000);
 afterAll(async () => { await teardownTestDb(); });
 
 async function seedLog(user, action, entityType) {

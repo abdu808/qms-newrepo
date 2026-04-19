@@ -146,9 +146,10 @@ git push
 # Coolify سينشر تلقائياً خلال 30 ثانية
 ```
 
-لتنفيذ Migration لقاعدة البيانات:
-- تعديل `prisma/schema.prisma`
-- بعد `git push`، حاوية `qms-api` ستنفّذ `npx prisma migrate deploy` عند إعادة التشغيل تلقائياً.
+لتطبيق تغييرات قاعدة البيانات:
+- عدّل `prisma/schema.prisma`
+- بعد `git push`، حاوية `qms-api` ستنفّذ `npx prisma db push --skip-generate` عند إعادة التشغيل تلقائياً.
+- إذا احتجت قيود SQL يدوية (مثل partial indexes) فطبّقها من `apps/api/prisma/migrations-manual/` بعد النشر.
 
 ---
 

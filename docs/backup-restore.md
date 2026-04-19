@@ -81,7 +81,7 @@ npm run backup
 4. **تشغيل Prisma ضد البيئة المؤقتة**:
    ```bash
    cd apps/api
-   DATABASE_URL="$TEST_URL" npx prisma migrate deploy   # إذا لزم
+   DATABASE_URL="$TEST_URL" npx prisma db push --skip-generate
    DATABASE_URL="$TEST_URL" npm start
    ```
 

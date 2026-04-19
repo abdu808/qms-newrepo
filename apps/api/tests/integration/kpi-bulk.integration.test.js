@@ -3,13 +3,18 @@
  * يتحقّق من (1) نجاح السطور الصحيحة، (2) تجميع الأخطاء، (3) rollup مرة واحدة للأب.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { setupTestDb, teardownTestDb, buildApp } from './setup.js';
-import { prisma } from '../../src/db.js';
+import { setupTestDb, teardownTestDb, buildApp, getPrisma } from './setup.js';
 import { createUser } from './helpers/factories.js';
 import { loginAs, authed } from './helpers/auth.js';
 
 let app;
-beforeAll(async () => { await setupTestDb(); app = await buildApp(); }, 120_000);
+let prisma;
+
+beforeAll(async () => {
+  await setupTestDb();
+  prisma = await getPrisma();
+  app = await buildApp();
+}, 120_000);
 afterAll(async () => { await teardownTestDb(); });
 
 async function createTree(prefix) {

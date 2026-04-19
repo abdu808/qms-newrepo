@@ -19,7 +19,7 @@ if not exist .env (
 
 echo.
 echo [1/3] تطبيق تغييرات قاعدة البيانات...
-node_modules\.bin\prisma db push --accept-data-loss
+node_modules\.bin\prisma db push
 if errorlevel 1 (
     echo ❌ فشل db push - تحقق من DATABASE_URL في ملف .env
     pause

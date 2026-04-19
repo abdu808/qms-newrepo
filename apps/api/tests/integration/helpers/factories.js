@@ -3,12 +3,17 @@
  * كل factory يُنشئ سجلاً مع قيم افتراضية معقولة، ويقبل `overrides` جزئي.
  */
 import bcrypt from 'bcrypt';
-import { prisma } from '../../../src/db.js';
+
+async function getPrisma() {
+  const mod = await import('../../../src/db.js');
+  return mod.prisma;
+}
 
 let seq = 0;
 const uniq = (prefix) => `${prefix}-${Date.now()}-${++seq}`;
 
 export async function createUser(overrides = {}) {
+  const prisma = await getPrisma();
   const password = overrides.password || 'Test1234!';
   const hash = await bcrypt.hash(password, 4);
   const email = overrides.email || uniq('user') + '@test.local';
@@ -30,6 +35,7 @@ export async function createUser(overrides = {}) {
 }
 
 export async function createSupplier(overrides = {}) {
+  const prisma = await getPrisma();
   return prisma.supplier.create({
     data: {
       code: overrides.code || uniq('SUP'),
@@ -47,6 +53,7 @@ async function ensureSystemUser() {
 }
 
 export async function createDocument(overrides = {}) {
+  const prisma = await getPrisma();
   const creator = overrides.createdById
     ? { id: overrides.createdById }
     : await ensureSystemUser();
@@ -63,6 +70,7 @@ export async function createDocument(overrides = {}) {
 }
 
 export async function createComplaint(overrides = {}) {
+  const prisma = await getPrisma();
   return prisma.complaint.create({
     data: {
       code: overrides.code || uniq('CMP'),
@@ -79,6 +87,7 @@ export async function createComplaint(overrides = {}) {
 }
 
 export async function createNCR(overrides = {}) {
+  const prisma = await getPrisma();
   const reporter = overrides.reporterId
     ? { id: overrides.reporterId }
     : await ensureSystemUser();
