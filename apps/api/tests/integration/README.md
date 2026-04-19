@@ -22,7 +22,7 @@ npm install --save-dev @testcontainers/postgresql testcontainers
 # local: يتطلّب Docker شغّال
 npm run test:integration
 
-# CI: يتطلّب runner بـ Docker socket
+# CI: يتطلّب runner يوفّر Docker لـ testcontainers
 npm run test:integration -- --reporter=verbose
 ```
 
@@ -32,10 +32,8 @@ npm run test:integration -- --reporter=verbose
 
 ```
 tests/integration/
-├── setup.js              ← يُنشئ container + تطبيق migrations + seed أدنى
-├── teardown.js           ← يوقف الـ container
+├── setup.js              ← يُنشئ container + يربط DATABASE_URL + يبني app
 ├── helpers/
-│   ├── app.js            ← يُنشئ Express app جاهز للـ supertest
 │   ├── factories.js      ← بناة بيانات اختبار (user/doc/complaint/...)
 │   └── auth.js           ← login + إرجاع token
 └── <area>.integration.test.js  ← ملف لكل مسار حرج
@@ -47,14 +45,21 @@ tests/integration/
 
 | # | الملف | المسارات المُختبَرة | الحالة |
 |---|---|---|---|
-| 1 | `auth.integration.test.js` | login success/fail، refresh، logout، rate-limit | ⬜ |
-| 2 | `publicAck.integration.test.js` | توقيع، منع تكرار، صلاحية التوكن | ⬜ |
-| 3 | `publicEval.integration.test.js` | تقييم مستفيد، انتهاء التوكن | ⬜ |
-| 4 | `surveys.integration.test.js` | نشر، رد، إغلاق | ⬜ |
-| 5 | `documents.integration.test.js` | اعتماد، إصدارات، إقرارات | ⬜ |
-| 6 | `kpi.integration.test.js` | upsert قراءة، حساب RAG، تنبيه | ⬜ |
-| 7 | `complaints.integration.test.js` | إنشاء، SLA، إغلاق | ⬜ |
-| 8 | `ncr.integration.test.js` | دورة الحياة، إغلاق، race | ⬜ |
+| 1 | `auth.integration.test.js` | login success/fail، inactive user | ✅ |
+| 2 | `publicAck.integration.test.js` | صلاحية التوكن غير الموجود | ✅ |
+| 3 | `publicEval.integration.test.js` | صلاحية التوكن غير الموجود | ✅ |
+| 4 | `surveys.integration.test.js` | المصادقة + القراءة المصرح بها | ✅ |
+| 5 | `documents.integration.test.js` | القراءة + قيود الاعتماد | ✅ |
+| 6 | `kpi.integration.test.js` | حماية المسار + تحقق الإدخال | ✅ |
+| 7 | `kpi-bulk.integration.test.js` | bulk insert + تجميع الأخطاء | ✅ |
+| 8 | `complaints.integration.test.js` | القراءة + تحقق التعديل | ✅ |
+| 9 | `ncr.integration.test.js` | القراءة + تحقق التعديل | ✅ |
+| 10 | `rollup.integration.test.js` | rollup من KPI إلى الهدف والجذر | ✅ |
+| 11 | `reopen.integration.test.js` | إعادة الفتح + التدقيق + الصلاحيات | ✅ |
+| 12 | `myWork.integration.test.js` | payload Guided Mode والتنبيهات | ✅ |
+| 13 | `reportBuilder.integration.test.js` | datasets/run/export + الصلاحيات | ✅ |
+| 14 | `auditLog.integration.test.js` | الفلترة + التصدير + الحجب | ✅ |
+| 15 | `alerts.integration.test.js` | aggregate smoke + readiness | ✅ |
 
 ---
 
@@ -64,16 +69,17 @@ tests/integration/
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { setupTestDb, teardownTestDb, buildApp } from './setup.js';
-import { loginAs, createUser } from './helpers/auth.js';
+import { createUser } from './helpers/factories.js';
+import { loginAs } from './helpers/auth.js';
 
-let app, db;
+let app;
 
 beforeAll(async () => {
-  db = await setupTestDb();
-  app = await buildApp(db.url);
+  await setupTestDb();
+  app = await buildApp();
 }, 60_000);
 
-afterAll(async () => { await teardownTestDb(db); });
+afterAll(async () => { await teardownTestDb(); });
 
 describe('auth login', () => {
   it('accepts valid credentials', async () => {
@@ -92,10 +98,10 @@ describe('auth login', () => {
 ## ⚠️ قرارات بنيوية مُعتمدة
 
 1. **Docker عبر testcontainers** — وليس SQLite lane منفصل (يفقد JSONB/arrays).
-2. **Prisma migrate deploy** على الـ container قبل أول test.
-3. **Transactional rollback** عبر `BEGIN`/`ROLLBACK` لكل test — يمنع تلوث السجلات.
-4. **Seed أدنى فقط**: Role enum + Setting أساسي. كل test يُنشئ بياناته.
-5. **Rate-limit**: يُعطَّل في test env عبر `process.env.NODE_ENV === 'test'`.
+2. **Prisma db push --skip-generate** على الـ container قبل كل ملف test.
+3. **كل ملف تكامل يملك Postgres container مستقلًا** لتجنّب تلوّث البيانات.
+4. **لا يوجد seed مشترك**: كل test يُنشئ بياناته بوضوح عبر factories.
+5. **الـ CI لا يحتاج Postgres service منفصل** لأن testcontainers يدير البيئة كاملة.
 
 ---
 
@@ -106,4 +112,4 @@ describe('auth login', () => {
 - [ ] يُنشئ كل بياناته (لا يعتمد على seed مشترك عدا enums)
 - [ ] يختبر الـ happy path + حالة خطأ واحدة على الأقل
 - [ ] يتحقق من الـ envelope: `{ ok: true|false, ... }`
-- [ ] لا يتجاوز 5 ثوانٍ (اختبار بطيء → افصله)
+- [ ] لا يحمّل `prisma` على مستوى الملف قبل `setupTestDb()`
